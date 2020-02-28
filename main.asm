@@ -12,8 +12,8 @@
 
 .segment "ZEROPAGE"
 
-object1x: .res 1
-object1y: .res 1
+object1x: .res 2
+object1y: .res 2
 
 facing:	.res 1
 .define FACE_LEFT 0
@@ -173,11 +173,10 @@ InfiniteLoop:
 ;move the sprites	
 	A16
 	XY8
-	ldx object1x ;8 bit
 	lda pad1
 	and #KEY_RIGHT
 	beq @skip_r
-	inx
+	inc object1x
 	ldy #FACE_RIGHT
 	sty facing
 @skip_r:	
@@ -185,27 +184,25 @@ InfiniteLoop:
 	lda pad1
 	and #KEY_LEFT
 	beq @skip_l
-	dex
+	dec object1x
 	ldy #FACE_LEFT
 	sty facing
 @skip_l:
-	stx object1x
-	stx spr_x
+
 	
 
-	ldy object1y
 	lda pad1
 	and #KEY_UP
 	beq @skip_u
-	dey
+	dec object1y
 @skip_u:	
 
 	lda pad1
 	and #KEY_DOWN
 	beq @skip_d
-	iny
+	inc object1y
 @skip_d:
-	sty object1y
+
 	
 
 	
@@ -214,8 +211,15 @@ InfiniteLoop:
 	sta spr_x
 	lda object1y
 	sta spr_y
-	lda #(SPR_SIZE_LG)
-	sta spr_h ; small
+	
+	WDM_BREAK
+	
+	lda #SPR_PRIOR_2
+	sta spr_pri ;priority override
+	
+	lda object1x+1
+	and #1 ;high x
+	sta spr_h
 	
 	lda facing ;a8
 	bne @face_right
@@ -223,18 +227,19 @@ InfiniteLoop:
 @face_left:	
 	
 	AXY16
-	lda #.loword(Metasprite_L)
-	ldx #^Metasprite_L
+	lda #.loword(Meta_01)
+	ldx #^Meta_01
 	bra @face_both
 	
 @face_right:
 	
 	AXY16
-	lda #.loword(Metasprite_R)
-	ldx #^Metasprite_R
+	lda #.loword(Meta_00)
+	ldx #^Meta_00
 
 @face_both:	
-	jsl oam_meta_spr
+	;jsl oam_meta_spr
+	jsl oam_meta_spr_p ;override priority bits
 
 	AXY16
 	
@@ -245,19 +250,14 @@ InfiniteLoop:
 	
 	
 
-Metasprite_L:
-;relative x, relative y, tile #, attributes
-.byte   $00, $00, $01, SPR_PAL_0|SPR_PRIOR_2|SPR_H_FLIP	
-.byte   $f8, $10, $22, SPR_PAL_0|SPR_PRIOR_2|SPR_H_FLIP
-.byte   $08, $10, $20, SPR_PAL_0|SPR_PRIOR_2|SPR_H_FLIP
-.byte 128 ;end of set
 
-Metasprite_R:
-;relative x, relative y, tile #, attributes
-.byte   $00, $00, $01, SPR_PAL_0|SPR_PRIOR_2	
-.byte   $f8, $10, $20, SPR_PAL_0|SPR_PRIOR_2
-.byte   $08, $10, $22, SPR_PAL_0|SPR_PRIOR_2
-.byte 128 ;end of set
+;relative x, relative y, tile #, attributes, size
+
+
+
+.include "M1TE/metasprites.asm"
+;is the metasprite data called
+;Meta_00 right and Meta_01 left
 	
 	
 .include "header.asm"

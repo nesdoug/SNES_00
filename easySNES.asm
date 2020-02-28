@@ -57,6 +57,7 @@ spr_h: .res 1
 spr_x2:	.res 2 ;for meta sprite code
 spr_y2: .res 1
 spr_h2:	.res 1
+spr_pri: .res 1 ;priority
 
 pal_update: .res 2
 vram_update: .res 2
@@ -908,15 +909,14 @@ oam_meta_spr:
 ; copy all the sprite values to these 8 bit variables
 ;spr_x - x
 ;spr_y - y
-;spr_h - 0-3, optional, keep zero if not needed
+;spr_h - 0-1, optional, keep zero if not needed
 ;  bit 0 = X high bit (neg)
-;  bit 1 = sprite size
 ;(these values are trashed... rewrite them each use.)
-;then 
-;A16 = data address
-;X = bank of data
-;format (4 bytes per sprite)
-;relative x, relative y, tile #, attributes
+
+;A16 = metasprite data address
+;X = bank of metasprite data
+;format (5 bytes per sprite)
+;relative x, relative y, tile #, attributes, size
 ;end in 128
 	php
 	rep #$30
@@ -941,9 +941,96 @@ oam_meta_spr:
 @loop:
 	sep #$30 ;axy8
 	lda [temp2]
-	cmp #128
+	cmp #128 ;end of data
 	beq @done
-	;a = rel x
+	jsr meta_sub
+.a8	
+.i8
+	tyx
+	beq @skip
+	
+	jsl oam_spr ;call the 1 sprite subroutine
+	
+@skip:
+	rep #$30
+	lda #$0005
+	clc
+	adc temp2
+	sta temp2
+	bra @loop
+	
+@done:	
+.a8
+.i8
+	plp
+	rtl
+	
+
+	
+oam_meta_spr_p:
+;same as above, but you manually set the priority
+;for the sprites with spr_pri
+.a16
+.i16
+	php
+	rep #$30
+	;temp1 is used by oam_spr, don't use it here
+	sta temp2
+	stx temp3
+	sep #$20
+	lda spr_x
+	sta spr_x2
+	lda spr_y
+	sta spr_y2
+	lda spr_h
+	and #$01 ;high x 0-1
+	beq @zero
+	lda #$ff ;high x = -1
+@zero:	
+	sta spr_x2+1
+	lda spr_h
+	and #$02
+	sta spr_h2 ;size
+	
+@loop:
+	sep #$30 ;axy8
+	lda [temp2]
+	cmp #128 ;end of data
+	beq @done
+	jsr meta_sub
+.a8	
+.i8
+	tyx
+	beq @skip
+	
+	lda spr_a
+	and #$cf ;mask off priority bits
+	ora spr_pri
+	sta spr_a
+	jsl oam_spr ;call the 1 sprite subroutine
+	
+@skip:
+	rep #$30
+	lda #$0005
+	clc
+	adc temp2
+	sta temp2
+	bra @loop
+	
+@done:	
+.a8
+.i8
+	plp
+	rtl
+	
+	
+	
+	
+meta_sub:
+.a8
+.i8
+	
+;a = rel x
 	rep #$20 ;a16
 	and #$00ff ;clear that upper byte...
 ;need to extend the sign for a negative rel X	
@@ -953,7 +1040,7 @@ oam_meta_spr:
 	ora #$ff00 ;extend the sign
 @pos_x:
 	clc
-	adc spr_x2
+	adc spr_x2 ;either 0000 or ff00
 	sep #$20 ;a8
 	sta spr_x ;8 bit low X
 	xba ;are we in range?
@@ -986,24 +1073,17 @@ oam_meta_spr:
 	iny ;y=3 attributes
 	lda [temp2], y
 	sta spr_a
-	
-	jsl oam_spr ;call the 1 sprite subroutine
+	iny ;y=4 size
+	lda [temp2], y
+	ora spr_h
+	sta spr_h
+	rts
 	
 @skip:
-	rep #$30
-	lda #$0004
-	clc
-	adc temp2
-	sta temp2
-	bra @loop
+	ldy #0 ;signal to skip the sprite routine
+	rts
 	
-@done:	
-.a8
-.i8
-	plp
-	rtl
 	
-
 	
 ;music_play:
 ;music_stop:
