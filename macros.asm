@@ -2,6 +2,7 @@
 
 
 ;mesen-s can use wdm is as a breakpoint
+;for debugging purposes
 .macro WDM_BREAK
 	.byte $42, $00
 .endmacro
@@ -229,6 +230,19 @@
 .endmacro
 
 
+;first set vram_adr and vram_inc
+;decompresses rle files and copies to vram
+.macro UNPACK_TO_VRAM  src_address
+.if .asize = 8
+	rep #$30
+.elseif .isize = 8
+	rep #$30
+.endif
+	lda #.loword(src_address)
+	ldx #^src_address
+	jsl unrle
+	jsl vram_dma
+.endmacro
 
 
 
@@ -236,6 +250,19 @@
 ;---------------------------------
 ;end of things that need to be in forced blank
 ;---------------------------------
+
+;decompresses rle files to WRAM
+.macro UNPACK_ONLY  src_address
+.if .asize = 8
+	rep #$30
+.elseif .isize = 8
+	rep #$30
+.endif
+	lda #.loword(src_address)
+	ldx #^src_address
+	jsl unrle
+.endmacro
+
 
 
 ;do any time. copies 256 colors to a buffer.
