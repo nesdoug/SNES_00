@@ -8,6 +8,12 @@
 .endmacro
 
 
+;compile time calculation of a map address
+;add this to the map base address to get the
+;vram address of a tile
+.define MAP_OFFSET(tile_x,tile_y) (((tile_y)<<5)+(tile_x))
+
+
 
 .macro A8
 	sep #$20
@@ -35,9 +41,11 @@
 
 
 
-;reset_vram_system can be any size
 
-;these work if .smart is set
+
+
+;the if statements work if .smart is set
+
 
 ;-----------------------------
 ;only do these if forced blank
@@ -48,7 +56,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #value
-	jsl bg_mode
+	jsl BG_Mode
 .endmacro
 
 
@@ -57,7 +65,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #value
-	jsl bg3_priority
+	jsl BG3_Priority
 .endmacro
 
 
@@ -66,7 +74,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #value
-	jsl bg_tilesize
+	jsl BG_Tilesize
 .endmacro
 
 
@@ -76,7 +84,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 12)
-	jsl bg1_tile_addr
+	jsl BG1_Tile_Addr
 .endmacro
 
 
@@ -86,7 +94,7 @@
 	sep #$20 ; needs A8
 .endif 
 	lda #(address >> 8)
-	jsl bg2_tile_addr
+	jsl BG2_Tile_Addr
 .endmacro
 
 
@@ -96,7 +104,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 12)
-	jsl bg3_tile_addr
+	jsl BG3_Tile_Addr
 .endmacro
 
 
@@ -106,7 +114,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 8)
-	jsl bg4_tile_addr
+	jsl BG4_Tile_Addr
 .endmacro
 
 
@@ -116,7 +124,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 8)
-	jsl bg1_map_addr
+	jsl BG1_Map_Addr
 .endmacro
 
 
@@ -126,7 +134,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 8)
-	jsl bg2_map_addr
+	jsl BG2_Map_Addr
 .endmacro
 
 
@@ -136,7 +144,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 8)
-	jsl bg3_map_addr
+	jsl BG3_Map_Addr
 .endmacro
 
 
@@ -146,7 +154,7 @@
 	sep #$20 ; needs A8
 .endif 
 	lda #(address >> 8)
-	jsl bg4_map_addr
+	jsl BG4_Map_Addr
 .endmacro
 
 
@@ -155,7 +163,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #size
-	jsl bg1_map_size
+	jsl BG1_Map_Size
 .endmacro
 
 
@@ -164,7 +172,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #size
-	jsl bg2_map_size
+	jsl BG2_Map_Size
 .endmacro
 
 
@@ -173,7 +181,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #size
-	jsl bg3_map_size
+	jsl BG3_Map_Size
 .endmacro
 
 
@@ -182,56 +190,58 @@
 	sep #$20 ; needs A8
 .endif
 	lda #size
-	jsl bg4_map_size
+	jsl BG4_Map_Size
 .endmacro
 
 
-;first set vram_adr and vram_inc
+
+
+;first set VRAM_Addr and VRAM_Inc
 ;dst_address is in the WRAM
 .macro READ_FROM_VRAM  dst_address, length
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
 	rep #$30
 .endif
 	lda #.loword(dst_address)
 	ldx #^dst_address
 	ldy #length
-	jsl vram_read
+	jsl VRAM_Read
 .endmacro
 
 
-;first set vram_adr and vram_inc
+;first set VRAM_Addr and VRAM_Inc
 .macro DMA_TO_VRAM  src_address, length
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
 	rep #$30
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
 	ldy #length
-	jsl vram_dma
+	jsl DMA_VRAM
 .endmacro
 
 
-;first set vram_adr and vram_inc
+;first set VRAM_Addr and VRAM_Inc
 ; length is a variable not a constant #
 .macro SET_VRAM_DMA2  src_address, length
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
 	rep #$30
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
 	ldy length
-	jsl vram_dma
+	jsl DMA_VRAM
 .endmacro
 
 
 ;first set vram_adr and vram_inc
-;decompresses rle files and copies to vram
+;decompresses rle files AND copy to vram
 .macro UNPACK_TO_VRAM  src_address
 .if .asize = 8
 	rep #$30
@@ -240,18 +250,18 @@
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
-	jsl unrle
-	jsl vram_dma
+	jsl Unrle
+	jsl DMA_VRAM
 .endmacro
-
-
 
 
 ;---------------------------------
 ;end of things that need to be in forced blank
 ;---------------------------------
 
+
 ;decompresses rle files to WRAM
+;but don't copy to the vram
 .macro UNPACK_ONLY  src_address
 .if .asize = 8
 	rep #$30
@@ -260,76 +270,79 @@
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
-	jsl unrle
+	jsl Unrle
 .endmacro
+
 
 
 
 ;do any time. copies 256 colors to a buffer.
 .macro COPY_PAL_ALL  src_address
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
-	rep #$30
+	rep #$30 
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
-	jsl pal_all
+	jsl Pal_All
 .endmacro
+
 
 ;do any time. copies 128 colors to a buffer.
 .macro COPY_PAL_BG  src_address
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
-	rep #$30
+	rep #$30 
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
-	jsl pal_bg
+	jsl Pal_BG
 .endmacro
+
 
 ;do any time. copies 128 colors to a buffer.
 .macro COPY_PAL_SP  src_address
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
 	rep #$30
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
-	jsl pal_spr
+	jsl Pal_Spr
 .endmacro
+
 
 ;do any time. copies 16 colors to a buffer.
 ;row is 0-15
 .macro COPY_PAL_ROW  src_address, row
-	php
 .if .asize = 8
-	rep #$20
-.endif
-.if .isize = 16
-	sep #$10 ; needs XY8
+	rep #$30 ; needs a16
+.elseif .isize = 8
+	rep #$30
 .endif
 	lda #.loword(src_address)
 	ldx #^src_address
 	ldy #row
-	jsl pal_row
-	plp ;because XY8 is unusual
+	jsl Pal_Row
 .endmacro
+
 
 ;do any time. sets 1 color in a buffer.
 ;value is 0-$7fff, index is 0-255
 ;the function will double the index
 .macro SET_ONE_COLOR  value, index
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
 	rep #$30
 .endif
 	lda #value
-	ldx #index
-	jsl pal_col
+	ldx #index*2
+	sta a:PAL_BUFFER, x
+	inc pal_update
 .endmacro
 
 
@@ -341,7 +354,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #value
-	jsl pal_bright
+	jsl Pal_Bright
 .endmacro
 
 
@@ -353,7 +366,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #value
-	jsl set_mosaic
+	jsl Set_Mosaic
 .endmacro
 
 
@@ -365,7 +378,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #final
-	jsl pal_fade
+	jsl Pal_Fade
 .endmacro
 
 
@@ -376,19 +389,19 @@
 	sep #$20 ; needs A8
 .endif
 	lda #final
-	jsl mosaic_fade
+	jsl Mosaic_Fade
 .endmacro
 
 
 
-;a8 = delay value 0-255, 0 = 256.
+;a8 = Delay value 0-255, 0 = 256.
 ;in frames, max about 4 seconds.
 .macro DELAY_FOR  frames
 .if .asize = 16
 	sep #$20 ; needs A8
 .endif
 	lda #frames
-	jsl delay
+	jsl Delay
 .endmacro
 
 
@@ -399,7 +412,7 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(address >> 13)
-	jsl oam_tile_addr
+	jsl OAM_Tile_Addr
 .endmacro
 
 
@@ -410,9 +423,8 @@
 	sep #$20 ; needs A8
 .endif
 	lda #size
-	jsl oam_size
+	jsl OAM_Size
 .endmacro
-
 
 
 .macro SET_VRAM_INC  value
@@ -433,7 +445,7 @@
 ;mnv changes the data bank register, need to preserve it
 	phb
 .if .asize = 8
-	rep #$30
+	rep #$30 ; needs a16
 .elseif .isize = 8
 	rep #$30
 .endif
@@ -453,36 +465,34 @@
 
 
 ; clear a section of $7e0000-7effff wram
-; value should be 8 bit. the A register is 16, because 1 extra
-; byte of LDA is better than 2 extra bytes of sep $20
+; value should be 8 bit. the A register can be 16, because 
+; 1 extra byte of LDA is better than 2 extra bytes of sep $20
 ; don't clear the stack
 .macro CLEAR_7E  value, addr, length
-.if .asize = 8
-	rep #$30
-.elseif .isize = 8
-	rep #$30
+;see note about A size
+.if .isize = 8
+	rep #$10
 .endif
 	lda #value
 	ldx #.loword(addr)
 	ldy #length	
-	jsl wram_fill_7e
+	jsl WRAM_Fill_7E
 .endmacro
 
 
 ; clear a section of $7f0000-7fffff wram
-; value should be 8 bit. the A register is 16, because 1 extra
-; byte of LDA is better than 2 extra bytes of sep $20
+; value should be 8 bit. the A register can be 16, because 
+; 1 extra byte of LDA is better than 2 extra bytes of sep $20
 ; note, length of 0 = $10000
 .macro CLEAR_7F  value, addr, length
-.if .asize = 8
-	rep #$30
-.elseif .isize = 8
-	rep #$30
+;see note about A size
+.if .isize = 8
+	rep #$10
 .endif
 	lda #value
 	ldx #.loword(addr)
 	ldy #length	
-	jsl wram_fill_7f
+	jsl WRAM_Fill_7F
 .endmacro
 
 
@@ -493,7 +503,8 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(value)
-	jsl set_main_screen
+;	jsl Set_Main_Screen
+	sta r212c
 .endmacro
 
 
@@ -503,7 +514,8 @@
 	sep #$20 ; needs A8
 .endif
 	lda #(value)
-	jsl set_sub_screen
+;	jsl Set_Sub_Screen
+	sta r212d
 .endmacro
 
 
@@ -519,5 +531,10 @@
 .endmacro
 ; the r4200 is for the music code, which
 ; turns off all interrupts when loading
+
+
+
+
+
 
 

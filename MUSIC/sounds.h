@@ -7,13 +7,13 @@
 //sound effect aliases
 
 enum {
-	SFX_SFX=0
+	SFX_OUCH=0
 };
 
 //sound effect names
 
 const char* const soundEffectsNames[SOUND_EFFECTS_ALL]={
-	"SFX"	//0
+	"OUCH"	//0
 };
 
 //music effect aliases

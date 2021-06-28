@@ -1,6 +1,11 @@
+;example code, for easySNES
+;updated 6/2021
+
 .p816
 .smart
 
+.include "regs.asm"
+.include "macros.asm"
 .include "easySNES.asm"
 .include "init.asm"
 .include "MUSIC/music.asm"
@@ -12,12 +17,23 @@
 
 .segment "ZEROPAGE"
 
-object1x: .res 2
-object1y: .res 2
+hero_x: .res 2
+hero_y: .res 2
 
 facing:	.res 1
 .define FACE_LEFT 0
 .define FACE_RIGHT 1
+
+spike_x: .res 2
+spike_y: .res 2
+spike_moves: .res 1
+
+injury_delay: .res 1
+
+count99: .res 1
+count99_L:	.res 1
+count99_H:	.res 1
+test_array: .res 4
 
 
 
@@ -25,13 +41,22 @@ facing:	.res 1
 .segment "CODE"
 
 ;enters here in forced blank
-main:
+Main:
 .a16 ;just a standardized setting from init code
 .i16
 	phk ;push current bank, pull to data bank, to
 	plb ;make sure the current bank's data is accessible
 		;do this any time you jump to a different bank
 		;and need to use data in that bank.
+		
+	AXY16
+	lda #.loword(music_code)
+	ldx #^music_code
+	jsl SPC_Init
+	
+	AXY16
+	lda #$0001
+	jsl SPC_Stereo	
 
 
 	A8 ;all these need a8
@@ -74,48 +99,42 @@ main:
 ;4bpp tiles for bg 1 and 2	
 	AXY16
 	lda #$0000
-	sta vram_addr
-	UNPACK_TO_VRAM  BGTILES4 ;calls unrle and vram_dma
+	sta VMADDL ;$2116
+	UNPACK_TO_VRAM  BGTILES4 ;calls unrle
 	
 ;2bpp tiles for bg 3
 	lda #$2000
-	sta vram_addr
-	UNPACK_TO_VRAM  BGTILES2 ;ditto...
+	sta VMADDL ;$2116
+	UNPACK_TO_VRAM  BGTILES2
 
 ;4bpp tiles for sprites
 	lda #$4000
-	sta vram_addr
+	sta VMADDL ;$2116
 	UNPACK_TO_VRAM  SPRTILES
 	
 	
 ;now load the maps to the vram
 	lda bg1_map_base ;see, we did need this!
-	sta vram_addr
+	sta VMADDL ;$2116
 	UNPACK_TO_VRAM  BG1_MAP
 
 	
 	lda bg2_map_base
-	sta vram_addr
+	sta VMADDL ;$2116
 	UNPACK_TO_VRAM  BG2_MAP
 	
 	
 	lda bg3_map_base
-	sta vram_addr
+	sta VMADDL ;$2116
 	UNPACK_TO_VRAM  BG3_MAP
-	
-	
-	WDM_BREAK
-	lda #$7F00
-	sta vram_addr
-	UNPACK_TO_VRAM  RLE_TEST
 	
 	
 
 	COPY_PAL_BG Test_Palette
 	
 ; one row of sprite palette data
-	COPY_PAL_ROW Sp_Palette,8
-
+;	COPY_PAL_ROW Sp_Palette,8
+	COPY_PAL_SP Sp_Palette
 
 	
 ;nmi's should be off when loading data to the spc
@@ -124,48 +143,49 @@ main:
 	AXY16
 	lda #.loword(song1)
 	ldx #^song1
-	jsl spc_play_song
+	jsl SPC_Play_Song
 	;re enable nmi now
 ;	SET_INTERRUPT below
 
-	
-	
-	
 	
 	A8
 	lda #ALL_ON_SCREEN ;enable main screen
 	;alternate version
 	;lda #(BG1_ON|BG2_ON|BG3_ON|SPR_ON)
-	jsl set_main_screen
+	jsl Set_Main_Screen
+	
 	
 	lda #FULL_BRIGHT
-	jsl pal_bright
+	jsl Pal_Bright
 	
-	
+
 ;enable NMI and auto controller reads, IRQs off
 	SET_INTERRUPT  NMI_ON|AUTO_JOY_ON
-	
+
 	
 	A8	
-	jsl ppu_on ; end forced blank
-
+	jsl PPU_On ; end forced blank
+	
 	
 ;some initial values for sprite positions.	
 	lda #$50
-	sta object1x
+	sta hero_x
 	lda #$5c
-	sta object1y
+	sta hero_y
+	;same
+	sta spike_y
+	lda #$80
+	sta spike_x
 	
 	
 	
-InfiniteLoop:	
+Infinite_Loop:	
 	A8
 	XY16
-	jsl ppu_wait_nmi
-	jsl pad_poll
-	jsl oam_clear
-;	jsl reset_vram_system 
-; not using vram buffering in this example.
+	jsl PPU_Wait_NMI
+	jsl Pad_Poll
+	jsl OAM_Clear
+	stz sprid
 
 
 	
@@ -175,7 +195,7 @@ InfiniteLoop:
 	lda pad1
 	and #KEY_RIGHT
 	beq @skip_r
-	inc object1x
+	inc hero_x
 	ldy #FACE_RIGHT
 	sty facing
 @skip_r:	
@@ -183,7 +203,7 @@ InfiniteLoop:
 	lda pad1
 	and #KEY_LEFT
 	beq @skip_l
-	dec object1x
+	dec hero_x
 	ldy #FACE_LEFT
 	sty facing
 @skip_l:
@@ -193,32 +213,23 @@ InfiniteLoop:
 	lda pad1
 	and #KEY_UP
 	beq @skip_u
-	dec object1y
+	dec hero_y
 @skip_u:	
 
 	lda pad1
 	and #KEY_DOWN
 	beq @skip_d
-	inc object1y
+	inc hero_y
 @skip_d:
 
 	
 
-	
-	A8
-	lda object1x
+	A16
+	lda hero_x
 	sta spr_x
-	lda object1y
+	A8
+	lda hero_y
 	sta spr_y
-	
-
-	
-	lda #SPR_PRIOR_2
-	sta spr_pri ;priority override
-	
-	lda object1x+1
-	and #1 ;high x
-	sta spr_h
 	
 	lda facing ;a8
 	bne @face_right
@@ -237,14 +248,194 @@ InfiniteLoop:
 	ldx #^Meta_00
 
 @face_both:	
-	;jsl oam_meta_spr
-	jsl oam_meta_spr_p ;override priority bits
+	jsl OAM_Meta_Spr
 
 	AXY16
 	
-;---------
 	
-	jmp InfiniteLoop
+	
+	
+Move_Spike:
+	A8
+	lda frame_count
+	and #3
+	bne @skip
+	lda spike_moves
+	inc a
+	cmp #30
+	bcc @ok
+	lda #0
+@ok:
+	sta spike_moves
+	
+	cmp #15
+	bcc @down
+@up:
+	dec spike_y
+	bra @skip
+@down:
+	inc spike_y
+@skip:
+	
+	
+	
+Draw_spike:
+	
+	A8
+	lda spike_y
+	sta spr_y ;(1 byte)
+	AXY16
+	lda spike_x
+	sta spr_x ;9 bit (2 byte)
+	lda #.loword(Meta_02)
+	ldx #^Meta_02
+	jsl OAM_Meta_Spr
+	
+
+
+Injury_Collision:
+	A8
+	lda injury_delay ;wait a little so not constant injury
+	beq @ok
+	dec injury_delay
+	bra @injury_end
+@ok:	
+	A16
+	lda hero_x
+	and #$0100 ;negative = off screen
+	bne @injury_end
+	
+;check collision now	
+	A8
+	lda hero_x
+	sta obj1x
+	lda hero_y
+	sta obj1y
+;hitbox, hero
+	lda #14 ;width
+	sta obj1w
+	lda #28
+	sta obj1h
+	
+	lda spike_x
+	sta obj2x
+	lda spike_y
+	sta obj2y
+;hitbox, spike
+	lda #28
+	sta obj2w
+	sta obj2h
+	jsl Check_Collision
+	lda collision ;0 = no
+	beq @injury_end
+;injury	
+	lda #60
+	sta injury_delay
+;play sound effect	
+	AXY8
+	lda #0 ;ding
+	ldx #127
+	ldy #7 ;last channel
+	jsl SFX_Play_Center
+	
+	AXY16
+	COPY_PAL_ROW Flash_Palette,8 ;turn hero white
+
+	;the 8 means the 8th row (the first sprite row)
+@injury_end:	
+	A8
+	XY16
+;change color back to normal ?	
+	lda injury_delay
+	cmp #50
+	bne @end2
+	
+	AXY16
+	COPY_PAL_ROW Sp_Palette,8 ;turn hero back
+	;the 8 means the 8th row (the first sprite row)
+@end2:	
+	A8
+	XY16
+	
+	
+	
+;draw to BG 3, a decimal number 0-99
+	lda frame_count
+	and #$0f ;only do it every 16th frame
+	bne @skip_number_update
+;change that number	
+	lda count99
+	inc a
+	cmp #100
+	bcc @under100
+	lda #0
+@under100:
+	sta count99
+	A16
+	XY8
+	and #$00ff
+	ldx #10
+	jsl Divide ;returns a = result, x = remainder
+	stx count99_L
+	A8
+	sta count99_H
+;	XY16 ;see below
+	
+	lda count99_H
+	bne @1
+;if zero, use 10th tile, the zero tile is out of order in our tileset
+	lda #10
+@1:
+	sta test_array ;tile1, tile #
+	
+	lda count99_L
+	bne @2
+;if zero, use 10th tile, the zero tile is out of order in our tileset
+	lda #10
+@2:
+	sta test_array+2 ;tile2, tile #
+	
+	lda #TILE_PAL_1|TILE_PRIORITY
+	sta test_array+1 ;tile1 attributes
+	sta test_array+3 ;tile2 attributes
+	
+;copy test_array to a buffer...	
+	AXY16
+	lda #.loword(test_array)
+	ldx #^test_array
+	ldy #4 ;size 4 bytes
+	jsl Copy_To_VB ;copy this array to an update buffer
+	;that auto sets num_bytes_vb and src_address_vb
+	;but, we still need to set a vram address "dst_address_vb"
+;	xy size doesn't matter
+;	ldx #17 ;screen x coordinate
+;	ldy #2  ;screen y coordinate
+;	jsl Map_Offset ;returns a16, map offset
+; or we could used this one pre-calculated at assemble time
+	lda #MAP_OFFSET(17, 2)
+	
+	
+	clc
+	adc bg3_map_base
+	sta dst_address_vb
+;and then we call this or VB_Buffer_V (top to bottom)
+	jsl VB_Buffer_H ;left to right
+	
+	
+@skip_number_update:	
+
+
+;test slowdown / lag frame
+;	AXY16
+;	ldx #$3000
+;@slow:
+;	nop
+;	dex
+;	bne @slow
+;
+;	WDM_BREAK
+	
+	jmp Infinite_Loop
 	
 	
 	
@@ -310,7 +501,9 @@ Sp_Palette:
 ;1 row
 .incbin "M1TE/SPR_TEST.pal"
 
-
+Flash_Palette: ;all white
+.word $7fff, $7fff, $7fff, $7fff, $7fff, $7fff, $7fff, $7fff
+.word $7fff, $7fff, $7fff, $7fff, $7fff, $7fff, $7fff, $7fff
 
 
 

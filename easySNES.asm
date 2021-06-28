@@ -1,5 +1,5 @@
 ; easySNES - written by Doug Fraker, 2020
-; ver 1.1 Mar 19 2020
+; ver 2.0 June 2021
 ; based on neslib by Shiru and others
 ; for SNES game development, for ca65 assembler
 
@@ -19,8 +19,8 @@
 .p816
 .smart
 
-.include "defines.asm"
-.include "macros.asm"
+;.include "defines.asm"
+;.include "macros.asm"
 
 
 
@@ -52,15 +52,15 @@ r212d: .res 1
 r4200: .res 1 ; for music code
 
 sprid: .res 1
-spr_x: .res 1 ; for sprite setting code
+spr_x: .res 2 ; for sprite setting code
 spr_y: .res 1
-spr_c: .res 1
-spr_a: .res 1
-spr_h: .res 1
+spr_c: .res 1 ; tile #
+spr_a: .res 1 ; attributes
+spr_sz: .res 1 ; sprite size
+
 spr_x2:	.res 2 ; for meta sprite code
-spr_y2: .res 1
-spr_h2:	.res 1
-spr_pri: .res 1 ; priority
+spr_h:	.res 1
+
 
 pal_update: .res 2
 vram_update: .res 2
@@ -94,46 +94,59 @@ fade_from: .res 1
 fade_to: .res 1
 rand:	.res 4
 
+obj1x: .res 1 ; x
+obj1w: .res 1 ; width
+obj1y: .res 1 ; x
+obj1h: .res 1 ; height
+obj2x: .res 1 ; x
+obj2w: .res 1 ; width
+obj2y: .res 1 ; y
+obj2h: .res 1 ; height
+collision: .res 1
+
+frame_ready: .res 1
+hdma_active: .res 1
 
 
 .segment "BSS"
 ; put an a: in front of all these when in use to force 16-bit address
-pal_buffer: .res 512
-oam_buffer: .res 544
-vb_ptrs: .res 256 ; list of pointers to vram buffer data
-scratchpad:	.res 256
+PAL_BUFFER: .res 512
+OAM_BUFFER: .res 512 ;low table
+OAM_BUFFER2: .res 32 ;high table
+VB_PTRS: .res 256 ; list of pointers to vram buffer data
+SCRATCHPAD:	.res 256
 
 .segment "BSS7E"
 ; put a f: in front to force a 24-bit address
-vb_data: .res $2000 ; vram buffer data to be transfered
+VB_DATA: .res $2000 ; vram buffer data to be transfered
 
 
 
 
 
-.global RESET, NMI, IRQ, IRQ_end, oam_dma, pal_dma, vram_update_system, bg_mode
-.global bg3_priority, bg_tilesize, bg1_tile_addr, bg2_tile_addr, bg3_tile_addr
-.global bg4_tile_addr, bg1_map_addr, bg1_map_size, bg2_map_addr, bg2_map_size
-.global bg3_map_addr, bg3_map_size, bg4_map_addr, bg4_map_size, map_offset
-.global map_offset6464, oam_clear, oam_size, oam_tile_addr, oam_spr
-.global pad_poll, vb_buffer_H, vb_buffer_V, vram_adr, vram_inc
-.global vram_put, vram_fill, vram_dma, wram_fill_7e, wram_fill_7f
-.global pal_all, pal_row, pal_col, pal_bright, pal_buffer, oam_buffer
-.global ppu_wait_nmi, delay, ppu_off, ppu_on, set_mosaic, multiply, divide
-.global reset_vram_system, pal_bg, pal_spr, set_main_screen, set_sub_screen
-.global pal_fade, mosaic_fade, vram_fill2, scratchpad, multiply_fast
-.global rand16, seed_rand, copy_to_vb, oam_meta_spr
-.global unrle
+.global RESET, NMI, IRQ, IRQ_end, DMA_OAM, DMA_Palette, VRAM_Update_System, BG_Mode
+.global BG3_Priority, BG_Tilesize, BG1_Tile_Addr, BG2_Tile_Addr, BG3_Tile_Addr
+.global BG4_Tile_Addr, BG1_Map_Addr, BG1_Map_Size, BG2_Map_Addr, BG2_Map_Size
+.global BG3_Map_Addr, BG3_Map_Size, BG4_Map_Addr, BG4_Map_Size, Map_Offset
+.global Map_Offset6464, OAM_Clear, OAM_Size, OAM_Tile_Addr, OAM_Spr
+.global Pad_Poll, VB_Buffer_H, VB_Buffer_V, VRAM_Addr, VRAM_Inc
+.global VRAM_Put, VRAM_Fill, DMA_VRAM, WRAM_Fill_7E, WRAM_Fill_7F
+.global Pal_All, Pal_Row, Pal_Col, Pal_Bright, PAL_BUFFER, OAM_BUFFER
+.global PPU_Wait_NMI, Delay, PPU_Off, PPU_On, Set_Mosaic, Multiply, Divide
+.global Reset_VRAM_System, Pal_BG, Pal_Spr, Set_Main_Screen, Set_Sub_Screen
+.global Pal_Fade, Mosaic_Fade, VRAM_Fill2, SCRATCHPAD, Multiply_Fast
+.global Rand16, Seed_Rand, Copy_To_VB, OAM_Meta_Spr, VRAM_Read
+.global Unrle
 
 .globalzp r2100, r2100b, r2101, r2105, r2106, r2107, r2108, r2109, r210a
-.globalzp r210b, r210c, sprid, spr_x, spr_y, spr_c, spr_a, spr_h, pal_update
+.globalzp r210b, r210c, sprid, spr_x, spr_y, spr_c, spr_a, spr_h, spr_sz, pal_update
 .globalzp vram_update, frame_count, bg1_scroll_x, bg1_scroll_y
 .globalzp bg2_scroll_x, bg2_scroll_y, bg3_scroll_x, bg3_scroll_y 
 .globalzp bg4_scroll_x, bg4_scroll_y, bg1_map_base, bg2_map_base
 .globalzp bg3_map_base, bg4_map_base, pad1, pad1_new, pad2, pad2_new
 .globalzp vb_ptr_index, vb_data_index, src_address_vb, dst_address_vb, num_bytes_vb
-.globalzp r212c, r212d, fade_from, fade_to, r4200
-
+.globalzp r212c, r212d, fade_from, fade_to, r4200, frame_ready
+.globalzp obj1x, obj1y, obj1w, obj1h, obj2x, obj2y, obj2w, obj2h, collision
 
 
 
@@ -144,7 +157,7 @@ vb_data: .res $2000 ; vram buffer data to be transfered
 NMI:
 .a16
 .i16
-	rep #$30
+	rep #$30 ;axy16
 	phb
 	pha
 	phx
@@ -158,32 +171,33 @@ NMI:
 	
 	sep #$20 ; a8
 	
-; note, DKC3 jumps long to $80 bank here, should we ??	
-	
-	lda $4210
+	bit $4210
 	; it is required to read this register
 	; in the NMI handler
 	
+	lda frame_ready
+	beq @not_ready	
 	lda r2100
-	and #$80 ; is this forced blank?
-	beq @do_update
+;	#$80 ; is this forced blank?
+	bpl @do_update	
+@not_ready:	
 	jmp @skip_all
 @do_update:
 ; a8 xy16
-	stz $420c ; make sure hdma doesn't conflict with dma
+;	stz $420c ; make sure hdma doesn't conflict with dma
 	
-	jsr oam_dma
+	jsr OAM_DMA
 	
 	lda pal_update
 	beq @update_vram
 	stz pal_update
-	jsr pal_dma
+	jsr DMA_Palette
 	
 @update_vram:
 	lda vram_update
 	beq @skip_update
 	stz vram_update
-	jsr vram_update_system
+	jsl VRAM_Update_System
 
 @skip_update:
 ; A is still 8 bit
@@ -246,12 +260,17 @@ NMI:
 @skip_all:
 ; restore registers
 	
-	sep #$20
+	sep #$20 ;A8
 	lda r2100
 	ora r2100b ; brightness
 	sta $2100
 	
-	rep #$30
+	lda hdma_active
+	sta $420c
+;all of the dma is done on channel 0
+;recommend you only use channels 1-7 for hdma
+	
+	rep #$30 ;axy16
 	inc frame_count ; 16 bit
 	
 	pld
@@ -264,8 +283,7 @@ NMI:
 	
 	
 IRQ:
-	pha ; doesn't matter what A size is
-	lda $4211
+	bit $4211
 ; this register is required to be read
 ; in the IRQ handler
 	
@@ -273,13 +291,12 @@ IRQ:
 ; IRQ can be used for mid-screen effects
 ; using the H or V timers $4207-a
 
-	pla
 IRQ_end:	
 	rti
 ; restores processor flags
 	
 	
-oam_dma:
+OAM_DMA:
 .a8
 .i16
 ; used by nmi. copies oam buffer to OAM
@@ -288,7 +305,7 @@ oam_dma:
 	stz $4300 ; transfer mode
 	lda #4
 	sta $4301 ; destination, oam data
-	ldx #oam_buffer
+	ldx #OAM_BUFFER
 	stx $4302 ; source
 	stz $4304 ; bank
 	ldx #544
@@ -298,7 +315,7 @@ oam_dma:
 	rts
 	
 	
-pal_dma:
+DMA_Palette:
 .a8
 .i16
 ; used by nmi. copies pal buffer to palette
@@ -306,7 +323,7 @@ pal_dma:
 	stz $4300 ; transfer mode ; zero is fine.
 	lda #$22
 	sta $4301 ; destination, pal data
-	ldx #pal_buffer
+	ldx #PAL_BUFFER
 	stx $4302 ; source
 	stz $4304 ; bank
 	ldx #512
@@ -318,7 +335,7 @@ pal_dma:
 	
 	
 
-vram_update_system:
+VRAM_Update_System:
 .a8
 .i16
 ; used by nmi. copies vram buffer to VRAM
@@ -336,21 +353,21 @@ vram_update_system:
 	sta $4304 ; src bank, always 7e
 	ldy #0
 @loop:
-	lda a:vb_ptrs, y
+	lda a:VB_PTRS, y
 	cmp #$ff
 	beq @done
 	sta $2115 ; vram increment mode, first byte of every set
 	iny
 	
-	ldx a:vb_ptrs, y ; src address
+	ldx a:VB_PTRS, y ; src address
 	stx $4302 ; and 3
 	iny
 	iny
-	ldx a:vb_ptrs, y ; destination address in vram
+	ldx a:VB_PTRS, y ; destination address in vram
 	stx $2116 ; and 2117
 	iny
 	iny
-	ldx a:vb_ptrs, y ; size of transfer
+	ldx a:VB_PTRS, y ; size of transfer
 	stx $4305 ; and 6
 	iny
 	iny
@@ -361,24 +378,24 @@ vram_update_system:
 	
 @done:
 	lda #$ff
-	sta a:vb_ptrs ; cleared
+	sta a:VB_PTRS ; cleared
 	lda #V_INC_1 ; back to standard
-	sta $2115 ; vram_inc mode
-	rts
-
+	sta $2115 ; VRAM_Inc mode
+;	rtl
+; fall through
 
 	
 
-reset_vram_system:
+Reset_VRAM_System:
 ; call once per frame, if using the auto-dma system.
 .a16
 	php
-	rep #$20
+	rep #$20 ;a16
 	stz vram_update
 	stz vb_ptr_index
 	stz vb_data_index
 	lda #$ffff
-	sta a:vb_ptrs
+	sta a:VB_PTRS
 	plp
 	rtl
 
@@ -389,7 +406,7 @@ reset_vram_system:
 	
 	
 
-bg_mode:
+BG_Mode:
 .a8
 .i16
 ; a = 0-7 =  mode
@@ -403,7 +420,7 @@ bg_mode:
 
 
 
-bg3_priority:
+BG3_Priority:
 .a8
 .i16
 ; if A = 0, bg 3on bottom
@@ -418,7 +435,7 @@ bg3_priority:
 	
 	
 
-bg_tilesize:
+BG_Tilesize:
 .a8
 .i16
 ; A = 0 for 8x8
@@ -434,7 +451,7 @@ bg_tilesize:
 
 	
 	
-bg1_tile_addr:
+BG1_Tile_Addr:
 .a8
 .i16
 ; do during forced blank	
@@ -451,7 +468,7 @@ bg1_tile_addr:
 	
 
 	
-bg2_tile_addr:
+BG2_Tile_Addr:
 .a8
 .i16
 ; do during forced blank	
@@ -468,7 +485,7 @@ bg2_tile_addr:
 
 	
 	
-bg3_tile_addr:
+BG3_Tile_Addr:
 .a8
 .i16
 ; do during forced blank	
@@ -485,7 +502,7 @@ bg3_tile_addr:
 	
 	
 
-bg4_tile_addr:
+BG4_Tile_Addr:
 .a8
 .i16
 ; do during forced blank	
@@ -502,7 +519,7 @@ bg4_tile_addr:
 	
 	
 
-bg1_map_addr:	
+BG1_Map_Addr:	
 .a8
 .i16
 ; do during forced blank	
@@ -519,7 +536,7 @@ bg1_map_addr:
 
 
 			
-bg1_map_size:
+BG1_Map_Size:
 .a8
 .i16
 ; do during forced blank	
@@ -535,7 +552,7 @@ bg1_map_size:
 	
 	
 
-bg2_map_addr:	
+BG2_Map_Addr:	
 .a8
 .i16
 ; do during forced blank	
@@ -552,7 +569,7 @@ bg2_map_addr:
 
 	
 	
-bg2_map_size:
+BG2_Map_Size:
 .a8
 .i16
 ; do during forced blank	
@@ -568,7 +585,7 @@ bg2_map_size:
 	
 	
 
-bg3_map_addr:
+BG3_Map_Addr:
 .a8
 .i16	
 ; do during forced blank	
@@ -585,7 +602,7 @@ bg3_map_addr:
 	
 	
 	
-bg3_map_size:
+BG3_Map_Size:
 .a8
 .i16
 ; do during forced blank	
@@ -601,7 +618,7 @@ bg3_map_size:
 	
 	
 
-bg4_map_addr:	
+BG4_Map_Addr:	
 .a8
 .i16
 ; do during forced blank	
@@ -618,7 +635,7 @@ bg4_map_addr:
 
 	
 	
-bg4_map_size:
+BG4_Map_Size:
 .a8
 .i16
 ; do during forced blank	
@@ -634,10 +651,12 @@ bg4_map_size:
 	
 	
 	
-map_offset: 
+Map_Offset: 
 .a16
-.i8
-; A should be 16, XY size doesn't matter
+.i16
+; A should be 16 bit
+; XY size doesn't matter - JUST LEAVE IT 16 bit, if it saves bytes
+
 ; converts pixel coordinates in a map to tile address offset
 ; the idea is that you add this value to the map_base
 ; works for 32x32,64x32,and 32x64 maps
@@ -648,8 +667,8 @@ map_offset:
 
 ; returns a16 = vram address offset (add it to the base address)
 	php
-	rep #$20
-	sep #$10
+	rep #$20 ;a16
+;	sep #$10 ;xy8 ;size doesn't matter
 	tya
 	and #$0020
 	sta temp1
@@ -680,10 +699,12 @@ offset_common:
 
 	
 	
-map_offset6464: 
+Map_Offset6464: 
 .a16
-.i8
-; A should be 16, XY size doesn't matter
+.i16
+; A should be 16 bit
+; XY size doesn't matter - JUST LEAVE IT 16 bit, if it saves bytes
+
 ; works for 64x64 maps only
 ; x -L = tile's x position, 0-63 large map
 ; y -L = tile's y position, 0-63 large map
@@ -692,8 +713,8 @@ map_offset6464:
 
 ; returns a16 = vram address
 	php
-	rep #$20
-	sep #$10
+	rep #$20 ;a16
+;	sep #$10 ;xy8
 
 	stz temp1
 	tya
@@ -713,58 +734,57 @@ map_offset6464:
 
 	
 	
-oam_clear:
+;updated 6/2021
+OAM_Clear:	
 .a8
 .i16
-; do at the start of each frame	
-; clears the sprite buffer
-; put all y at 224
+;fills the buffer with 224 for low table
+;and $00 for high table
 	php
-	sep #$20
-	rep #$10
-	stz sprid
-	lda #224
-	ldy #1
-@loop:
-; more efficient than a one lined sta
-	sta a:oam_buffer, y
-	sta a:oam_buffer+$40, y
-	sta a:oam_buffer+$80, y
-	sta a:oam_buffer+$c0, y
-	sta a:oam_buffer+$100, y
-	sta a:oam_buffer+$140, y
-	sta a:oam_buffer+$180, y
-	sta a:oam_buffer+$1c0, y
-	iny
-	iny
-	iny
-	iny
-	cpy #$40 ; 41, but whatever
-	bcc @loop
+	A8
+	XY16
+	ldx #.loword(OAM_BUFFER) 
+	stx $2181 ;WRAM_ADDR_L
+	stz $2183 ;WRAM_ADDR_H
 	
-; clear the high table too
-; then the oam_spr code can skip the 5th byte, if zero
+	ldx #$8008 ;fixed transfer to WRAM data 2180
+	stx $4300
+	ldx	#.loword(SpriteEmptyVal)
+	stx $4302 ; and 4303
+	lda #^SpriteEmptyVal ;bank #
+	sta $4304
+	ldx #$200 ;size 512 bytes
+	stx $4305 ;and 4306
+	lda #1
+	sta $420B ; DMA_ENABLE start dma, channel 0
 
-	ldx #30
-	rep #$20
-@loop2:
-	stz a:oam_buffer+$200, x
-	dex
-	dex
-	bpl @loop2
+	ldx	#.loword(SpriteUpperEmpty)
+	stx $4302 ; and 4303
+	lda #^SpriteUpperEmpty ;bank #
+	sta $4304
+	ldx #$0020 ;size 32 bytes
+	stx $4305 ;and 4306
+	lda #1
+	sta $420B ; DMA_ENABLE start dma, channel 0
 	plp
 	rtl
 	
+SpriteUpperEmpty: ;my sprite code assumes hi table of zero
+.word $0000
+
+SpriteEmptyVal:
+.byte 224	
+	
 
 
-oam_size:
+OAM_Size:
 .a8
 .i16
 ; do any time, copied to register in nmi	
 ; ---- -111 = base address
 ; a8 = mode in 111- ---- bits
 ; NOTE, in 64x64 mode, large sprites can't hide at the bottom
-; so oam_clear won't work right, they will wrap to the top.
+; so OAM_Clear won't work right, they will wrap to the top.
 	and #$e0
 	sta temp1
 	lda r2101
@@ -775,7 +795,7 @@ oam_size:
 	
 	
 	
-oam_tile_addr:
+OAM_Tile_Addr:
 .a8
 .i16	
 ; do any time, copied to register in nmi	
@@ -794,111 +814,94 @@ oam_tile_addr:
 
 	
 	
-oam_spr:
+OAM_Spr:
 .a8
 .i16
 ; to put one sprite on screen
 ; copy all the sprite values to these 8 bit variables
-; spr_x - x
-; spr_y - y
-; spr_c - tile #
+; spr_x - x (9 bit)
+; spr_y - y (8 bit)
+; spr_c - tile # (8 bit)
 ; spr_a - attributes, flip, palette, priority
-; spr_h - 0-3, optional, keep zero if not needed
-;  bit 0 = X high bit (neg)
-;  bit 1 = sprite size
+; spr_sz = sprite size, 0 or 2
+
 	php
-	sep #$20
-	lda sprid ; 0-127
-	lsr a
-	lsr a
-	sta temp1 ; 0-31
+	rep #$30 ;axy16
 	lda sprid
-	rep #$30
 	and #$007f
+	tax
 	asl a
 	asl a ; 0-511
 	tay
-	sep #$20
-	lda spr_x
-	sta a:oam_buffer, y
-	lda spr_y
-	sta a:oam_buffer+1, y
-	lda spr_c
-	sta a:oam_buffer+2, y
-	lda spr_a
-	sta a:oam_buffer+3, y
+	
+	txa
+	sep #$20 ;a8
+	lsr a
+	lsr a ; 0-31
+	tax
+	lda spr_x ;x low byte
+	sta a:OAM_BUFFER, y
+	lda spr_y ;y
+	sta a:OAM_BUFFER+1, y
+	lda spr_c ;tile
+	sta a:OAM_BUFFER+2, y
+	lda spr_a ;attribute
+	sta a:OAM_BUFFER+3, y
 	
 ; handle the high table
 ; two bits, shift them in
 ; this is slow, so if this is zero, skip it, it was
 ; zeroed in oam_clear
 
-	lda spr_h ; if zero, skip
+	lda spr_x+1 ;9th x bit
+	and #1 ;we only need 1 bit
+	ora spr_sz ;size
 	beq @end
-	and #3 ; to be safe, we only need 2 bits
 	sta spr_h
-	
-	lda #0
-	xba ; clear that H byte, a is 8 bit
-	lda temp1 ; sprid >> 2
-	tay ; should be 0-31
 	
 	lda sprid
 	and #3
 	beq @zero
-	cmp #1
+	dec a
 	beq @one
-	cmp #2
+	dec a
 	beq @two
 	bne @three
+	
 @zero:
-	lda a:oam_buffer+$200, y
-	and #$fc
-	sta temp1
 	lda spr_h
-	ora temp1
-	sta a:oam_buffer+$200, y
+	sta a:OAM_BUFFER+$200, x
 	bra @end
 	
 @one:
-	lda a:oam_buffer+$200, y
-	and #$f3
-	sta temp1
 	lda spr_h
 	asl a
 	asl a
-	ora temp1
-	sta oam_buffer+$200, y
+	ora a:OAM_BUFFER+$200, x
+	sta a:OAM_BUFFER+$200, x
 	bra @end
 	
 @two:
-	lda a:oam_buffer+$200, y
-	and #$cf
-	sta temp1
 	lda spr_h
 	asl a
 	asl a
 	asl a
 	asl a
-	ora temp1
-	sta a:oam_buffer+$200, y	
+	ora a:OAM_BUFFER+$200, x
+	sta a:OAM_BUFFER+$200, x
 	bra @end
 
 @three:
-	lda a:oam_buffer+$200, y
-	and #$3f
-	sta temp1
 	lda spr_h
 	lsr a ; 0000 0001 c
 	ror a ; 1000 0000 c
 	ror a ; 1100 0000 0
-	ora temp1
-	sta a:oam_buffer+$200, y	
+	ora a:OAM_BUFFER+$200, x
+	sta a:OAM_BUFFER+$200, x	
 	
-@end:	
+@end:
 	lda sprid
-	clc
-	adc #1
+	inc a
 	and #$7f ; keep it 0-127
 	sta sprid
 	plp
@@ -906,198 +909,171 @@ oam_spr:
 	
 	
 	
-oam_meta_spr:	
+OAM_Meta_Spr:	
 .a16
 .i16
+;update 6/2021
 ; to put multiple sprites on screen
-; copy all the sprite values to these 8 bit variables
-; spr_x - x
-; spr_y - y
-; spr_h - 0-1, optional, keep zero if not needed
-;  bit 0 = X high bit (neg)
-; (these values are trashed... rewrite them each use.)
+; copy all the sprite values to these variables
+; spr_x = x (9 bit)
+; spr_y = y (8 bit)
 
 ; A16 = metasprite data address
 ; X = bank of metasprite data
+
 ; format (5 bytes per sprite)
 ; relative x, relative y, tile #, attributes, size
 ; end in 128
-	php
-	rep #$30
-	; temp1 is used by oam_spr, don't use it here
-	sta temp2
-	stx temp3
-	sep #$20
-	lda spr_x
-	sta spr_x2
-	lda spr_y
-	sta spr_y2
-	lda spr_h
-	and #$01 ; high x 0-1
-	beq @zero
-	lda #$ff ; high x = -1
-@zero:	
-	sta spr_x2+1
-	lda spr_h
-	and #$02
-	sta spr_h2 ; size
-	
-@loop:
-	sep #$30 ; axy8
-	lda [temp2]
-	cmp #128 ; end of data
-	beq @done
-	jsr meta_sub
-.a8	
-.i8
-	tyx
-	beq @skip
-	
-	jsl oam_spr ; call the 1 sprite subroutine
-	
-@skip:
-	rep #$30
-	lda #$0005
-	clc
-	adc temp2
-	sta temp2
-	bra @loop
-	
-@done:	
-.a8
-.i8
-	plp
-	rtl
-	
 
-	
-oam_meta_spr_p:
-; same as above, but you manually set the priority
-; for the sprites with spr_pri
-.a16
-.i16
 	php
-	rep #$30
-	; temp1 is used by oam_spr, don't use it here
-	sta temp2
-	stx temp3
-	sep #$20
-	lda spr_x
+	rep #$30 ;axy16
+	sta temp1 ;address of metasprite
+	stx temp2
+	
+	ldy #$0000
+	sty temp3 ;clear these
+	sty temp4 ;high table index
+	sty temp5
+	sty temp6
+	
+	lda spr_x ;16 bits
+	and #$01ff ;9 bits
 	sta spr_x2
-	lda spr_y
-	sta spr_y2
-	lda spr_h
-	and #$01 ; high x 0-1
-	beq @zero
-	lda #$ff ; high x = -1
-@zero:	
-	sta spr_x2+1
-	lda spr_h
-	and #$02
-	sta spr_h2 ; size
+	
+	sep #$20 ;a8
+	lda sprid
+	and #3
+	sta temp3
+	lda #3
+	sec
+	sbc temp3
+	sta temp3 ;loop counter
+	
+	lda sprid
+	lsr a
+	lsr a ; 0-31
+	sta temp4 ;high table index
+	
+	lda sprid
+	rep #$20 ;a16
+	and #$007f
+	asl a
+	asl a ; 0-511
+	tax ;x = low table index
 	
 @loop:
-	sep #$30 ; axy8
-	lda [temp2]
+	sep #$20 ; a8
+	lda [temp1], y
 	cmp #128 ; end of data
 	beq @done
-	jsr meta_sub
-.a8	
-.i8
-	tyx
-	beq @skip
-	
-	lda spr_a
-	and #$cf ; mask off priority bits
-	ora spr_pri
-	sta spr_a
-	jsl oam_spr ; call the 1 sprite subroutine
-	
-@skip:
-	rep #$30
-	lda #$0005
-	clc
-	adc temp2
-	sta temp2
-	bra @loop
-	
-@done:	
-.a8
-.i8
-	plp
-	rtl
-	
-	
-	
-	
-meta_sub:
-.a8
-.i8
-	
-; a = rel x
-	rep #$20 ; a16
-	and #$00ff ; clear that upper byte...
-; need to extend the sign for a negative rel X	
-	cmp #$0080
+;first byte is rel x (signed)	
+	rep #$20 ;a16
+	and #$00ff
+	cmp #$0080 ;is negative?
 	bcc @pos_x
 @neg_x:
 	ora #$ff00 ; extend the sign
 @pos_x:
 	clc
-	adc spr_x2 ; either 0000 or ff00
-	sep #$20 ; a8
-	sta spr_x ; 8 bit low X
-	xba ; are we in range?
-	cmp #$ff
-	bne @check_x
-; set high x	
-	lda spr_h2
-	ora #$01
-	sta spr_h
-	bra @x_done
-	
-@check_x:
-	cmp #$01 ; too far right
-	bcs @skip
-; clear high x 	
-	lda spr_h2
-	sta spr_h
-	
-@x_done:
-.a8
-	ldy #1 ; rel y
-	lda [temp2], y
+	adc spr_x2
+;the high byte holds the X 9th bit
+	sep #$20 ;a8
+	sta a:OAM_BUFFER, x
+;keep that high byte 9th x
+	iny
+	lda [temp1], y ;y byte
 	clc
-	adc spr_y2
-	sta spr_y
-
-	iny ; y=2 char
-	lda [temp2], y
-	sta spr_c
-	iny ; y=3 attributes
-	lda [temp2], y
-	sta spr_a
-	iny ; y=4 size
-	lda [temp2], y
-	ora spr_h
+	adc spr_y	
+	sta a:OAM_BUFFER+1, x
+	iny
+	lda [temp1], y ;tile
+	sta a:OAM_BUFFER+2, x
+	iny
+	lda [temp1], y ;attributes
+	sta a:OAM_BUFFER+3, x
+	iny
+	lda [temp1], y ;size
+	iny
 	sta spr_h
-	rts
+	xba ;that 9th x bit
+	and #1
+	ora spr_h
+	phx ;save for later
+	ldx temp3
+	sta temp5, x
+	plx
 	
-@skip:
-	ldy #0 ; signal to skip the sprite routine
-	rts
+	inx
+	inx
+	inx
+	inx
+	inc sprid
 	
+	dec temp3 ;loop counter
+	bpl @loop
+; we have 4, push them to the high table now
+	phx ;save for later
+	ldx temp4
+	lda temp5
+	asl a
+	asl a
+	ora temp5+1
+	asl a
+	asl a
+	ora temp5+2
+	asl a
+	asl a
+	ora temp5+3
+	ora a:OAM_BUFFER+$200, x
+	sta a:OAM_BUFFER+$200, x
+	inc temp4
+
+	ldx #$0000
+	stx temp5
+	stx temp6
 	
+	plx
+;overflow check	
+	cpx #$0200
+	bcc @ok
+	ldx #$0000 ;low table index
+	stz sprid
+	stz temp4 ;high table index
+@ok:
 	
-; music_play:
-; music_stop:
-; music_pause:
-; sfx_play:
-; see music.asm
+	lda #3
+	sta temp3 ;loop counter
+	bra @loop
+	
+@done:
+.a8
+.i16
+	inc temp3
+	beq @exit
+;handle one more high table byte.
+	ldx temp4
+	lda temp5
+	asl a
+	asl a
+	ora temp5+1
+	asl a
+	asl a
+	ora temp5+2
+	asl a
+	asl a
+	ora temp5+3
+	ora a:OAM_BUFFER+$200, x
+	sta a:OAM_BUFFER+$200, x
+	
+@exit:	
+	plp
+	rtl
+	
 
 
 
-pad_poll:
+
+Pad_Poll:
 .a8
 .i16
 ; reads both controllers to pad1, pad1_new, pad2, pad2_new
@@ -1105,14 +1081,14 @@ pad_poll:
 ; copies the current controller reads to these variables
 ; pad1, pad1_new, pad2, pad2_new (all 16 bit)
 	php
-	sep #$20
+	sep #$20 ;a8
 @wait:
 ; wait till auto-controller reads are done
 	lda $4212
 	lsr a
 	bcs @wait
 	
-	rep #$30
+	rep #$30 ;axy16
 	
 	lda pad1
 	sta temp1 ; save last frame
@@ -1134,15 +1110,15 @@ pad_poll:
 
 
 
-rand16: ; enter with rep #$20, returns random 16 bit #
-.a16
-.i16
+Rand16: ; returns random 16 bit # in A
+.a8
+.i8
 ; borrowed from https://github.com/cc65/cc65/blob/master/libsrc/common/rand.s
 ; Written and donated by Sidney Cadot - sidney@ch.twi.tudelft.nl
 ; 2016-11-07, modified by Brad Smith
 ; 2019-10-07, modified by Lewis "LRFLEW" Fox
 	php
-	sep #$30
+	sep #$30 ;axy8
 ; 8 bit routine
 	lda rand
 	clc
@@ -1164,13 +1140,13 @@ rand16: ; enter with rep #$20, returns random 16 bit #
 
 	
 		
-seed_rand: 
+Seed_Rand: 
 .a16
 .i16
 ; seed the random number gererator
 ; a16 and x16 have the seed value.
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta rand	  
 	stx rand+2	  
 	plp
@@ -1187,18 +1163,18 @@ seed_rand:
 ; the next v-blank, in the nmi code.
 
 
-copy_to_vb:
+Copy_To_VB:
 .a16
 .i16
 ; this copies some data to a buffer.
 ; and sets num_bytes_vb and src_address_vb
 ; you need to, separately, set dst_address_vb
-; and then call either vb_buffer_H or vb_buffer_V
+; and then call either VB_Buffer_H or VB_Buffer_V
 ; a16 = source address
 ; x -L = source bank
 ; y16 = # of bytes
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	stx temp2
 	sty temp3
@@ -1207,88 +1183,92 @@ copy_to_vb:
 	ldx vb_data_index
 	txa
 	clc
-	adc #.loword(vb_data)
+	adc #.loword(VB_DATA)
 	sta src_address_vb
 @loop:
 	sep #$20 ; a8
 	lda [temp1], y
-	sta f:vb_data, x
+	sta f:VB_DATA, x
 	iny
 	inx
 	rep #$20 ; a16
 	dec temp3 ; 16 bit dec
 	bne @loop
 	stx vb_data_index
+	sep #$20 ;A8
+	inc vram_update
 	plp
 	rtl
 
 	
 
-vb_buffer_H:
+VB_Buffer_H:
 .a8
 .i16
 ; set pointers to the data in the vram buffer
 ; set src_address_vb, num_bytes_vb, dst_address_vb
-; then call vb_buffer_H or vb_buffer_V
+; then call VB_Buffer_H or VB_Buffer_V
 ; horizontal write buffer.
 	php
-	sep #$20
-	rep #$10
+	sep #$20 ;a8
+	rep #$10 ;xy16
 	ldy vb_ptr_index
 	lda #V_INC_1 ; vram increment 1
-	sta a:vb_ptrs, y
+	sta a:VB_PTRS, y
 	
-vb_ptrs_common:
+VB_PTRS_common:
 	lda #$ff
-	sta a:vb_ptrs+7, y
+	sta a:VB_PTRS+7, y
 	
-	rep #$20
+	rep #$20 ;A16
 	lda src_address_vb
-	sta a:vb_ptrs+1, y
+	sta a:VB_PTRS+1, y
 	lda dst_address_vb
-	sta a:vb_ptrs+3, y
+	sta a:VB_PTRS+3, y
 	lda num_bytes_vb
-	sta a:vb_ptrs+5, y
+	sta a:VB_PTRS+5, y
 
 	tya
 	clc
 	adc #7
 	sta vb_ptr_index
+	
+;	inc vram_update ;already done in Copy_To_VB
 	plp
 	rtl
 
 	
 	
-vb_buffer_V:
+VB_Buffer_V:
 .a8
 .i16
-; vertical write buffer. like as vb_buffer_H above.
+; vertical write buffer. like as VB_Buffer_H above.
 	php
-	sep #$20
-	rep #$10
+	sep #$20 ;a8
+	rep #$10 ;xy16
 	ldy vb_ptr_index
 	lda #V_INC_32 ; vram increment 32
-	sta a:vb_ptrs, y
-	bra vb_ptrs_common
+	sta a:VB_PTRS, y
+	bra VB_PTRS_common
 
 
 ; --------------------------------	
 	
 
-vram_read:
+VRAM_Read:
 .a16
 .i16
 ; do during forced blank	
-; first set vram_adr and vram_inc
+; first set VRAM_Addr and VRAM_Inc
 ; a = destination
 ; x = destination bank
 ; y = length in bytes (should be even)
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	stx temp2
 	tya
-	lsr a ; divide 2
+	lsr a ; Divide 2
 	tax ; count with x
 	lda $2139 ; 1 dummy read
 	ldy #$0000
@@ -1304,18 +1284,18 @@ vram_read:
 
 	
 
-vram_dma:
+DMA_VRAM:
 .a16
 .i16
 ; do during forced blank	
-; first set vram_adr and vram_inc
+; first set VRAM_Addr and VRAM_Inc
 ; a = source
 ; x = source bank
 ; y = length in bytes
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta $4302 ; source and 4303
-	sep #$20
+	sep #$20 ;a8
 	txa
 	sta $4304 ; bank
 	lda #$18
@@ -1329,14 +1309,14 @@ vram_dma:
 	
 	
 	
-; oam_dma
-; pal_dma
+; OAM_DMA
+; DMA_Palette
 ; see above, by nmi code.
 ; they are automatically sent every nmi.	
 
 	
 
-wram_fill_7e:
+WRAM_Fill_7E:
 .a8
 .i16
 ; to fill WRAM in the $7e0000 bank
@@ -1345,8 +1325,8 @@ wram_fill_7e:
 ; y16 = size in bytes
 ; CAUTION, DON'T USE THIS TO CLEAR STACK $1f00-1fff
 	php
-	sep #$20
-	rep #$10
+	sep #$20 ;a8
+	rep #$10 ;xy16
 @loop:	
 	sta f:$7e0000, x
 	inx
@@ -1357,7 +1337,7 @@ wram_fill_7e:
 
 	
 	
-wram_fill_7f:
+WRAM_Fill_7F:
 .a8
 .i16
 ; to fill WRAM in the $7f0000 bank
@@ -1365,8 +1345,8 @@ wram_fill_7f:
 ; x16 = start address
 ; y16 = size in bytes, 0 for $10000
 	php
-	sep #$20
-	rep #$10
+	sep #$20 ;a8
+	rep #$10 ;xy16
 @loop:	
 	sta f:$7f0000, x
 	inx
@@ -1377,20 +1357,20 @@ wram_fill_7f:
 
 	
 
-vram_fill: 
+VRAM_Fill: 
 .a16
 .i16
 ; do in forced blank
 ; write a fixed value, 8 bit, to the vram
-; first set vram_adr and vram_inc
+; first set VRAM_Addr and VRAM_Inc
 ; a = fill value -L 8 bit
 ; y = length in bytes (note, 0 = $10000 bytes)
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	lda #.loword(temp1)
 	sta $4302 ; and 4303
-	sep #$20
+	sep #$20 ;a8
 	lda #^temp1
 	sta $4304 ; bank
 	lda #$18
@@ -1405,17 +1385,17 @@ vram_fill:
 	
 	
 
-vram_fill2: 
+VRAM_Fill2: 
 .a16
 .i16
 ; do in forced blank
 ; write a fixed value, 16 bit, to the vram
-; first set vram_adr and vram_inc
+; first set VRAM_Addr and VRAM_Inc
 ; a = fill value 16 bit
 ; y = 0001 - 8000, length in words not bytes ! 
-; (divide byte length by 2)
+; (Divide byte length by 2)
 	php
-	rep #$30
+	rep #$30 ;axy16
 @loop:
 	sta a:$2118 ; vram_data
 	dey
@@ -1429,16 +1409,11 @@ vram_fill2:
 ; there is an automated system that copies from a buffer
 ; to the CGRAM during NMI. If you need to zero the palette
 ; do this...
-; rep #$30
-; lda #0 ; fill byte
-; ldx #.loword(pal_buffer)
-; ldy #$200
-; jsl wram_fill_7e
-; inc pal_update
+; jsr Clear_Palette (has an rts)
 
 
 
-pal_all:
+Pal_All:
 .a16
 .i16
 ; do any time
@@ -1446,13 +1421,13 @@ pal_all:
 ; load A HL with pointer to data
 ; load X -L with bank of data
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	stx temp2
 	ldy #0
 @loop:
 	lda [temp1], y
-	sta a:pal_buffer, y
+	sta a:PAL_BUFFER, y
 	iny
 	iny
 	cpy #$200
@@ -1463,7 +1438,7 @@ pal_all:
 	
 	
 	
-pal_bg:
+Pal_BG:
 .a16
 .i16
 ; do any time
@@ -1471,13 +1446,13 @@ pal_bg:
 ; load A HL with pointer to data
 ; load X -L with bank of data
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	stx temp2
 	ldy #0
 @loop:
 	lda [temp1], y
-	sta a:pal_buffer, y
+	sta a:PAL_BUFFER, y
 	iny
 	iny
 	cpy #$100
@@ -1488,7 +1463,7 @@ pal_bg:
 	
 	
 	
-pal_spr:
+Pal_Spr:
 .a16
 .i16
 ; do any time
@@ -1496,13 +1471,13 @@ pal_spr:
 ; load A HL with pointer to data
 ; load X -L with bank of data
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	stx temp2
 	ldy #0
 @loop:
 	lda [temp1], y
-	sta a:pal_buffer+$100, y
+	sta a:PAL_BUFFER+$100, y
 	iny
 	iny
 	cpy #$100
@@ -1513,16 +1488,16 @@ pal_spr:
 	
 	
 
-pal_row:
+Pal_Row:
 .a16
-.i8
+.i16
 ; do any time
 ; copy 32 bytes, 16 colors to color buffer
 ; load A HL with pointer to data
 ; load X -L with bank of data
 ; load Y -L with color row, 0-15	
 	php
-	rep #$30
+	rep #$30 ;axy16
 	sta temp1
 	stx temp2
 	tya
@@ -1532,7 +1507,7 @@ pal_row:
 	lsr a
 	lsr a
 	clc
-	adc #.loword(pal_buffer)
+	adc #.loword(PAL_BUFFER)
 	sta temp3
 	ldy #0
 @loop:
@@ -1548,7 +1523,7 @@ pal_row:
 
 
 	
-pal_col:
+Pal_Col:
 .a16
 .i16
 ; do any time
@@ -1556,40 +1531,40 @@ pal_col:
 ; load A HL with color 0-$7fff
 ; load X -L with index of the color 0-255
 	php
-	rep #$30
+	rep #$30 ;axy16
 	pha
 	txa
 	and #$00ff
 	asl a ; color index * 2
 	tax
 	pla
-	sta a:pal_buffer, y
+	sta a:PAL_BUFFER, y
 	inc pal_update ; set flag, will dma palette during nmi
 	plp
 	rtl
 	
 
 
-pal_bright:
+Pal_Bright:
 .a8
 ; change screen brightness 0 dark to 15 full bright
 ; load A -L with brightness
-	php
+;	php
 	sep #$20 ; a8
 	and #$0f
 	sta r2100b
-	plp
+;	plp
 	rtl
 	
 	
 	
-set_mosaic:
+Set_Mosaic:
 .a8
 ; a = 0-15
 ; change screen mosaic, 0 = 1x1, F = 16x16
-; load A -L with brightness
+; load A -L with mosaic value
 ; this has it affect all BG layers
-	php
+;	php
 	sep #$20 ; a8
 	asl a
 	asl a
@@ -1600,18 +1575,18 @@ set_mosaic:
 	and #$0f
 	ora temp1
 	sta r2106
-	plp
+;	plp
 	rtl	
 	
 	
 	
-pal_fade:
+Pal_Fade:
 ; a8 = fade brightness to value 0-15
 ; 0 dark to 15 full bright
 .a8
 .i8
 	php
-	sep #$30
+	sep #$30 ;axy8
 	sta fade_to
 	lda r2100b
 	sta fade_from
@@ -1635,7 +1610,7 @@ pal_fade:
 	and #$0f
 	sta r2100b
 	lda #4
-	jsl delay
+	jsl Delay
 	bra @loop
 
 @end:	
@@ -1644,13 +1619,13 @@ pal_fade:
 	
 	
 	
-mosaic_fade:
+Mosaic_Fade:
 ; a8 = fade mosaic to value 0-15
 ; 0 = 1x1, F = 16x16
 .a8
 .i8
 	php
-	sep #$30
+	sep #$30 ;axy8
 	sta fade_to
 	lda r2106
 	sta fade_from
@@ -1671,9 +1646,9 @@ mosaic_fade:
 	sta fade_from
 	
 @both:
-	jsl set_mosaic
+	jsl Set_Mosaic
 	lda #4
-	jsl delay
+	jsl Delay
 	bra @loop
 
 @end:	
@@ -1682,15 +1657,15 @@ mosaic_fade:
 	
 	
 	
-ppu_wait_nmi:
+PPU_Wait_NMI:
 .a8
 ; wait till the next frame
 ; only works if NMI interrupts are ON
-; this can't change X, used by delay
+; this can't change X, used by Delay
 	php
 ppu_wait_nmi2:	
-	sep #$20
-	inc vram_update
+	sep #$20 ;A8
+	inc frame_ready ;vram_update
 	lda frame_count
 @1:
 	cmp frame_count
@@ -1700,17 +1675,17 @@ ppu_wait_nmi2:
 
 	
 	
-delay:
+Delay:
 .a8
 ; a8 is # of frames to wait max 255 (about 4 seconds)
 ; 0 is 256
 ; only works if NMI interrupts are ON
 	php
-	sep #$30
+	sep #$30 ;axy8
 	tax
 
 @loop:	
-	jsl ppu_wait_nmi ; doesn't change X
+	jsl PPU_Wait_NMI ; doesn't change X
 	dex
 	bne @loop
 
@@ -1719,39 +1694,39 @@ delay:
 	
 	
 	
-ppu_off:
+PPU_Off:
 .a8
 ; start forced blank
 ; only works if NMI interrupts are ON
 ; note: nmi's will still fire.
 	php
-	sep #$20
+	sep #$20 ;a8
 	lda #$80
 	sta r2100
 	jmp ppu_wait_nmi2
 	
 	
 	
-ppu_on:
+PPU_On:
 .a8
 ; end forced blank
 ; only works if NMI interrupts are ON
 	php
-	sep #$20
+	sep #$20 ;a8
 	stz r2100
 	jmp ppu_wait_nmi2
 	
 	
 
-multiply:
+Multiply:
 .a16
 .i8
 ; in a16 xy8
 ; in x and y have 8 bit multipliers
 ; out a16 = result
 	php
-	rep #$20
-	sep #$10
+	rep #$20 ;a16
+	sep #$10 ;xy8
 	stx $4202
 	sty $4203
 	nop	; wait for the calculation
@@ -1764,37 +1739,12 @@ multiply:
 	
 	
 		
-multiply_fast:
-.a16
-.i8
-; only works if screen mode 0-6
-; not in mode 7
-; in a16 xy8
-; in a16 = first multiplier 16 bit
-; in x8 = second multiplier 8 bit
-; out a16 = result 16 bit
-; out x8 = result high, if > $ffff
-; note, this does a 2's compliment multiplication
-; and the numbers get weird if either negative bit set
-; 0002 x ff (-1) = fffffe (-2)
-; ffff (-1) x 02 = fffffe (-2)
-; ffff (-1) x fe (-2) = 2
-	php
-	sep #$30 ; axy8
-	sta $211b ; low byte
-	xba
-	sta $211b ; high byte
-	stx $211c
-; no wait for the calculation
-	rep #$20 ; a16
-	lda $2134 ; and 2135
-	ldx $2136
-	plp
-	rtl	
+;Multiply_Fast:
+;removed.
 	
 
 	
-divide:
+Divide:
 .a16
 .i8
 ; in a16 xy8
@@ -1803,8 +1753,8 @@ divide:
 ; out a16 = quotient
 ; out x8 = remainder
 	php
-	rep #$20
-	sep #$10
+	rep #$20 ;a16
+	sep #$10 ;xy8
 	sta $4204 ; and 4205
 	stx $4206
 	nop
@@ -1823,7 +1773,7 @@ divide:
 
 	
 	
-set_main_screen:
+Set_Main_Screen:
 .a8
 ; a8 = which layers are on main screen
 	sta r212c
@@ -1831,7 +1781,7 @@ set_main_screen:
 	
 	
 	
-set_sub_screen:
+Set_Sub_Screen:
 .a8
 ; a8 = which layers are on sub screen
 	sta r212d
@@ -1840,14 +1790,15 @@ set_sub_screen:
 	
 
 ;----------------
-; UNRLE
+; Unrle
 ;----------------
+; updated 6/2021
 ; used with R8C.py RLE or any output 
 ; RLE file from M1TE or SPEZ
 ; this assumes screen is OFF
 ; and a VRAM address has been set
-; a = address of the compressed data
-; x = bank of the compressed data
+; a16 = address of the compressed data
+; x16 = bank of the compressed data
 ; will automatically decompress to
 ; 7f0000 and then copy to the VRAM
 
@@ -1868,11 +1819,43 @@ set_sub_screen:
 ; F0 - end of data, non-planar
 ; FF - end of data, planar
 
-; UNPACK_ADR = $7f0000
+;----------------
+; UNRLE
+;----------------
+; used with R8C.py RLE or any output 
+; RLE file from M1TE or SPEZ
+; this assumes screen is OFF
+
+; First set VRAM address and inc mode
+; a = address of the compressed data
+; x = bank of the compressed data
+; jsl Unrle
+; will automatically decompress to
+; 7f0000 and then copy to the VRAM
+; UNPACK_ADR = $7f0000 see above
 ; returns y = size of unpacked data
 ; and ax = address of UNPACK_ADR
 ; then call vram_dma to send data to vram
-unrle:
+
+; one byte header ----
+; MM CCCCCC
+; M - mode, C - count (+1)
+; 0 - literal, C+1 values (1-64)
+; 1 - rle run, C+1 times (1-64)
+; 2 - rle run, add 1 each pass, C+1 times (1-64)
+; 3 - extend the value count to 2 bytes
+; 00 lit, 40 rle, 80 plus, F0 special
+
+; two byte header ----
+; 11 MM CCCC (high) CCCCCCCC (low)
+; M - mode (as above), C - count (+1)
+; count 1-4096
+; c0 lit big, d0 = rle big, e0 = plus big
+; F0 - end of data, non-planar
+; FF - end of data, planar
+
+
+Unrle:
 .a16
 .i16
 	rep #$30 ; axy16
@@ -2098,6 +2081,64 @@ unrle:
 	
 	
 	
+Check_Collision:
+.a8
+.i16
+;copy each object's value to these varibles and jsr here.
+;obj1x: .res 1 ; x
+;obj1w: .res 1 ; width
+;obj1y: .res 1 ; x
+;obj1h: .res 1 ; height
+;obj2x: .res 1 ; x
+;obj2w: .res 1 ; width
+;obj2y: .res 1 ; y
+;obj2h: .res 1 ; height
+;collision: .res 1
+;returns collision = 1 or 0
+	php
+	sep #$20 ;A8
+;first check if obj1 R (obj1 x + width) < obj2 L
+
+	lda obj1x
+	clc
+	adc obj1w
+	cmp obj2x
+	bcc @no
+		
+;now check if obj1 L > obj2 R (obj2 x + width)
+
+	lda obj2x
+	clc
+	adc obj2w
+	cmp obj1x
+	bcc @no
+
+;first check if obj1 Bottom (obj1 y + height) < obj2 Top
+	
+	lda obj1y
+	clc
+	adc obj1h
+	cmp obj2y
+	bcc @no
+		
+;now check if obj1 Top > obj2 Bottom (obj2 y + height)
+
+	lda obj2y
+	clc
+	adc obj2h
+	cmp obj1y
+	bcc @no
+	
+@yes:
+	lda #1
+	sta collision
+	plp
+	rtl
+	
+@no:
+	stz collision
+	plp
+	rtl	
 	
 
 

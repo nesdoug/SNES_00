@@ -1,11 +1,33 @@
 easySNES usage
-v1.0 Jan 26, 2020
+v2.0
+
+
+v2.0 changes: June 2021
+-switched to standard names for registers
+ (defines.asm now called regs.asm)
+-OAM_Meta_Spr is more efficient, handles overflow
+-OAM_Spr changed for the better
+-OAM_Clear is more efficient
+-! changed name convention (some other name changes)
+ variable, Function, CONSTANT (ARRAY)
+-snesgss -> snesgssQ (added echo functions)
+-many of the macros have been changed
+-added some sprite collision code (added to example)
+-handles lag frames better
+-more efficient init code
+-added an hdma variable (used by NMI code)
+-you shouldn't have to call Reset_VRAM_System anymore
+
+
 
 for ca65 assembler, to develop SNES games.
 based on neslib.s by Shiru
 
 
-stack starts at 1fff (recommend you don't change it)
+
+
+
+The stack starts at 1fff (recommend you don't change it)
 direct page is at 0000 (recommend you don't move it)
 
 all these functions, jsl to them (or use their macro)
@@ -18,24 +40,38 @@ also, there is an optional automated dma system for
 vram updates.
 
 
-reset_vram_system:
-if using the automated vram system, do this at the start
-of each frame to reset the variables.
-  jsl reset_vram_system
+
+I still have bugs with register sizes, particularly
+using macros that change the register size invisibly.
+It will be a good idea to keep a comment below each
+macro about the register size set by the macro.
 
 
-bg_mode:
+
+All the DMAs use channel 0. Recommend you use only
+use channels 1-7 for HDMA. Set this variable
+to activate HDMA and it will turn on during NMI.
+  lda #$fe
+  ;or lda #2 or #6, anything but 1
+  sta hdma_active
+
+or turn off
+  stz hdma_active ;a8
+
+
+
+BG_Mode:
 to set the bg mode. A = 0-7 =  mode
 (A in 8 bit, any time)
   A8
   lda #1
-  jsl bg_mode
+  jsl BG_Mode
   
 or...
   SET_BG_MODE  1
 
 
-bg3_priority:
+BG3_Priority:
 to set the background 3 priority bit in $2105.
 if A=0, bg3 will always be behind bg 1 and 2.
 if A=8, bg3 tiles with priority bit clear will be behind
@@ -44,248 +80,266 @@ in front of bg 1 and 2.
 (A in 8 bit, any time)
   A8
   lda #BG3_TOP
-  jsl bg3_priority
+  jsl BG3_Priority
 
 or...  
   SET_BG3_PRI  BG3_TOP
 
-bg_tilesize:
+  
+BG_Tilesize:
 to set backgrounds to either 8x8 or 16x16 tiles.
-see examples in defines.asm, such as BG_ALL_8x8 or 
+see examples in regs.asm, such as BG_ALL_8x8 or 
 BG_ALL_16x16. 
 (A in 8 bit, any time)
   A8
   lda #BG_ALL_8x8
-  jsl bg_tilesize
+  jsl BG_Tilesize
   
 or...  
   SET_BG_TILESIZE  BG_ALL_8x8
   
   
-bg1_tile_addr:
+BG1_Tile_Addr:
 to set the vram address of the tiles for bg1. A=x0-x7
 In steps of $1000.
 (A in 8 bit, forced blank)
   A8
   lda #6 ;for $6000
-  jsl bg1_tile_addr
+  jsl BG1_Tile_Addr
   
 or...(use the full address)
   SET_BG1_TILE_ADDR  $6000
   
  
-bg2_tile_addr:
+BG2_Tile_Addr:
 to set the vram address of the tiles for bg2. A=0x-7x
 In steps of $1000.
 (A in 8 bit, forced blank)
   A8
   lda #$60 ;for $6000
-  jsl bg2_tile_addr 
+  jsl BG2_Tile_Addr 
   
 or...(use the full address)
   SET_BG2_TILE_ADDR  $6000
   
   
-bg3_tile_addr:
+BG3_Tile_Addr:
 to set the vram address of the tiles for bg3. A=x0-x7
 In steps of $1000.
 (A in 8 bit, forced blank)
   A8
   lda #6 ;for $6000
-  jsl bg3_tile_addr
+  jsl BG3_Tile_Addr
   
 or...(use the full address)
   SET_BG3_TILE_ADDR  $6000
   
  
-bg4_tile_addr:
+BG4_Tile_Addr:
 to set the vram address of the tiles for bg4. A=0x-7x
 In steps of $1000.
 (A in 8 bit, forced blank)
   A8
   lda #$60 ;for $6000
-  jsl bg4_tile_addr 
+  jsl BG4_Tile_Addr 
   
 or...(use the full address)
   SET_BG4_TILE_ADDR  $6000  
 
 
-bg1_map_addr:
+BG1_Map_Addr:
 to set the vram address of the tilemap for bg1.
 In steps of $400, A = high byte.
 Also, it sets a variable to the address called bg1_map_base
 (A in 8 bit, forced blank)
   A8
   lda #$70 ;for $7000
-  jsl bg1_map_addr
+  jsl BG1_Map_Addr
   
 or...(use the full address)
   SET_BG1_MAP_ADDR  $6000
 
   
-bg2_map_addr:
-bg3_map_addr:
-bg4_map_addr:
+BG2_Map_Addr:
+BG3_Map_Addr:
+BG4_Map_Addr:
 work the same as bg 1.
-(variabls called bg2_map_base, bg3_map_base, bg4_map_base)
+(sets variables called bg2_map_base, bg3_map_base, bg4_map_base)
   
 or...(use the full address)
   SET_BG2_MAP_ADDR  $6800
   SET_BG3_MAP_ADDR  $7000
   SET_BG4_MAP_ADDR  $7800
   
+* later, use the base address variables in calculations to find the
+address of a specific tile  
   
-bg1_map_size:
+  
+BG1_Map_Size:
 to set the size of the tile map. 32x32,32x64,64x32, or 64x64
-see examples in defines.asm, such as MAP_32_32.
+see examples in regs.asm, such as MAP_32_32.
 (A in 8 bit, forced blank)
   A8
   lda #MAP_32_32
-  jsl bg1_map_size
+  jsl BG1_Map_Size
   
 or...  
   SET_BG1_MAP_SIZE  MAP_32_32
   
   
-bg2_map_size:
-bg3_map_size:
-bg4_map_size: 
+BG2_Map_Size:
+BG3_Map_Size:
+BG4_Map_Size: 
 work the same as bg 1.
 
 or...  
   SET_BG2_MAP_SIZE  MAP_32_32
   SET_BG3_MAP_SIZE  MAP_32_32
   SET_BG4_MAP_SIZE  MAP_32_32
+  
+* note 32x32 maps use $400 words
+  32x64 and 64x32 maps use $800 words
+  64x64 maps use $1000 words
+** words means 2 bytes, each vram address uses 2 bytes 
 
 
-map_offset:
+Map_Offset:
 to get a vram address of a specific tile. This version works
-for 32x32,32x64, and 64x32 sized maps.
-(A in 16 bit, XY in 8 bit)
+for 32x32, 32x64, and 64x32 sized maps.
+(AXY in 16 bit) 
+* changed to keep xy consistently 16 bit
 returns A = address offset, which you need to add to the
 base address, such as bg1_map_base.
 X = 0-31 or 0-63, Y = 0-31 or 0-63 = the x and y tile positions.
 if you have pixel coordinates 0-255, divide by 8 (for 8x8 tiles)
 Note: y max 27 if non-scrolling and screen size 224 pixel tall
-(do any time)
-	A16
-	XY8
+	AXY16
 	ldx #3
 	ldy #10
-	jsl map_offset
+	jsl Map_Offset
 	(returns A16 = the offset for the 3rd column, 10th row, tile)
 	clc
 	adc bg1_map_base ;if in bg 1
 	(now have the exact address of that tile)
-  
-(no macro)
+	
+or...    
+(you can use this for compile time constants, for 32x32 maps only)
+  MAP_OFFSET(tile_x,tile_y)
 
 
-map_offset6464:
-same as map_offset, except for 64x64 sized tilemaps.
+Map_Offset6464:
+same as map_offset, for 64x64 sized tilemaps.
 X = 0-63, Y = 0-63.
-  
-(no macro)
 
 
-oam_clear:
+
+OAM_Clear:
 clears the sprite buffer. Do at the start of each frame.
-  jsl oam_clear
-  
-(no macro)
+  jsl OAM_Clear
   
 
-oam_size:
+OAM_Size:
 sets the sizes of sprites.
-see examples in defines.asm, such as OAM_8_16 for
+see examples in regs.asm, such as OAM_8_16 for
 8x8 small sprites and 16x16 large sprites.
 (A in 8 bit, do any time)
   A8
   lda #OAM_8_16
-  jsl oam_size
+  jsl OAM_Size
   
 or...  
   SET_OAM_SIZE  OAM_8_16
   
   
-oam_tile_addr:
+OAM_Tile_Addr:
 sets the vram address for the sprite tiles.
 in steps of $2000. A = 0-3
 (A in 8 bit, do any time) 
   A8
   lda #2 ;vram $4000
-  jsl oam_tile_addr
+  jsl OAM_Tile_Addr
   
 or...(use the full address)
   SET_OAM_TILE_ADDR  $4000
   
   
-oam_spr:
+OAM_Spr:
 to put 1 sprite on the screen. first set
-each of these 5 variables, then call oam_spr
-spr_x, spr_y, spr_c (tile #), spr_a (flip, palette, priority),
-and spr_h (size, x upper bit)
-see examples in defines.asm for attributes, such as
+each of these 5 variables, then call OAM_Spr
+
+spr_x (9 bit)
+spr_y (8 bit)
+spr_c (tile #) (8 bit)
+spr_a (flip, palette, priority) (8 bit)
+spr_sz = sprite size, 0 or 2 (sm or lg)
+
+see constants in regs.asm for attributes, such as
 SPR_PAL_2, SPR_PRIOR_0, and SPR_H_FLIP.
   A8
   lda #$10 ;x position of 10
   sta spr_x
+  stz spr_x+1 ;9th bit zero
   lda #$20 ;y position of 21*
   sta spr_y
   lda #$30 ;tile $30
   sta spr_c
-  lda #SPR_PAL_2 ;palette #2
+  lda #SPR_PAL_2|SPR_PRIOR_2 ;palette #2, priority of 2
   sta spr_a
-  lda #SPR_SIZE_SM ;small
-  sta spr_h
-  jsl oam_spr
+  lda #SPR_SIZE_SM ;small (depends on oam settings)
+  sta spr_sz
+  jsl OAM_Spr
   
 *yes, sprites appear 1 pixel low, just like NES
-  
-(no macro)
+** you don't need to rewrite these between calls to
+OAM_Spr, like if you are drawing multiple sprites with
+the same size, attributes, and tile #, you can just
+adjust only spr_x and spr_y between calls to OAM_Spr.
 
 
-oam_meta_spr:
-put multiple sprites on screen. first set
-each of these 3 variables, then load AX with the
-address of the meta sprite data.
-spr_x, spr_y, and spr_h (size and upper x bit)
-The data is 4 bytes per sprite, ending in 128
-relative x, relative y, tile #, attributes
-(see examples in defines.asm for attributes)
+OAM_Meta_Spr:
+put multiple sprites on screen. 
+First, copy all the sprite values to these variables
+  spr_x = x (9 bit)
+  spr_y = y (8 bit)
+Then, load AX with the address of the meta sprite data.
+
+The data is 5 bytes per sprite, ending in 128
+relative x, relative y, tile #, attributes, size
+(see constants in regs.asm for attributes)
+(the data can be generated by the SPEZ app)
+  A8 
+  lda #$10 ;or y variable
+  sta spr_y
   AXY16
+  lda #$01ff ;or x variable, 9 bit
+  sta spr_x
   lda #.loword(MetaspriteData)
   ldx #^MetaspriteData
-  jsl oam_meta_spr
-  
-(no macro)
+  jsl OAM_Meta_Spr
 
 
-pad_poll:
-reads both controllers to pad1, pad1_new, pad2, pad2_new
-do it at the start of each frame
-  jsl pad_poll
+Pad_Poll:
+reads both controllers to these variables:
+pad1, pad1_new, pad2, pad2_new
+Do it at the start of each frame.
+  jsl Pad_Poll
   
-(no macro)
-	
-	
-rand16:
+ 
+Rand16:
 returns A = 16 bit random #
   A16
-  jsl rand16
+  jsl Rand16
   
-(no macro)
-  
-  
-seed_rand:
+ 
+Seed_Rand:
 pass a 16 bit # to seed the random # generator
 probably best to wait till the user presses a button
 to seed with an actual random number.
   A16
   lda frame_count
-  jsl seed_rand
+  jsl Seed_Rand
   
-(no macro)
+ 
 
   
 
@@ -293,87 +347,109 @@ to seed with an actual random number.
 | vram buffer system for auto-dma |
 -----------------------------------
 
-copy_to_vb:
+
+Reset_VRAM_System:
+to reset the variables.
+You shouldn't have to call this... the system itself calls
+this at the end (in NMI). I put a call to it in the init
+code, in case the user hits reset at the wrong time.
+  jsl Reset_VRAM_System
+  
+  
+The VRAM system is a 2 step process. First you copy the
+data to a buffer with Copy_To_VB, then you call either
+VB_Buffer_H or VB_Buffer_V. There is a way to skip the
+Copy_To_VB part, if the data is already somewhere in
+the $7e bank, by just setting all the variables needed
+by VB_Buffer_H, which are...
+  src_address_vb ;pointer to the data
+  dst_address_vb ;vram address destination
+  num_bytes_vb ;how many bytes to transfer
+  
+
+Copy_To_VB:
 to copy some data to the buffer. This would be step 1.
 Internally, it sets some variables...
 src_address and num_bytes.
 AX = address of the data to be copied.
 Y = # of bytes.
+  AXY16
   lda #.loword(raw_data)
   ldx #^raw_data
   ldy #100 ;to copy 100 bytes
-  jsl copy_to_vb
-  
-(no macro)
+  jsl Copy_To_VB
   
 
-vb_buffer_H:
+VB_Buffer_H:
 to set a pointer to the data we just copied, and set up
-an auto-dma to go left to right. (will occur next nmi).
+an auto-dma to go left to right. (to transfer at the next nmi).
 step 2 would be to calculate a vram address and pass
 that # to the variable dst_address, then step 3 is 
-to call vb_buffer_H
+to call VB_Buffer_H
   A16
   lda #$6123 ;vram address
   sta dst_address
-  jsl vb_buffer_H
+  jsl VB_Buffer_H
+
   
-(no macro)
-  
-  
-vb_buffer_V:
-same as vb_buffer_H, except the data will go top to bottom
-when copied to the vram.
-  
-(no macro)
+VB_Buffer_V:
+same as VB_Buffer_H, except the data will go top to bottom
+when copied to the vram (+32 increment mode)
+
+ 
   
 
 
-vram_read:
+VRAM_Read:
 read some data from the vram to wram.
 First set a vram address and increment mode.
 ;a = destination address
 ;x = destination bank
 ;y = length in bytes (should be even)
-(AXY in 16 bit, forced blank)
+(forced blank or v-blank)
+  A8
+  lda #V_INC_1
   AXY16
+  lda #$1234 ;vram address
+  sta VMADDL ;$2116
+  
   lda #.loword(wram_dst)
   ldx #^wram_dst
   ldy #100 ;to copy 100 bytes
-  jsl vram_read
+  jsl VRAM_Read
   
 or...  
   READ_FROM_VRAM  wram_dst, length
   
   
-vram_dma:
+DMA_VRAM:
 to copy data from wram or rom to the vram.
 First set a vram address and increment mode.
 ;a = source address
 ;x = source bank
 ;y = length in bytes
-(AXY in 16 bit, forced blank)
+(AXY in 16 bit, forced blank or v-blank)
   A8
   lda #V_INC_1 ;make sure the increment mode is 1
-  sta vram_inc
+  sta VMAIN ;$2115
   AXY16
   lda #$1234 ;vram address
-  sta vram_addr
+  sta VMADDL ;$2116
 
   lda #.loword(wram_dst)
   ldx #^wram_dst
   ldy #100 ;to copy 100 bytes
-  jsl vram_read
+  jsl DMA_VRAM
   
-or...  
+or...(after setting a vram address)
   DMA_TO_VRAM  src_address, length
   
   
-??
-mem_clear: use wram_fill_7e or wram_fill_7f, fill value 0
+
+mem_clear: use WRAM_Fill_7E or WRAM_Fill_7F, fill value 0
   
 
-wram_fill_7e:
+WRAM_Fill_7E:
 a-L = 8 bit fill value (0 to clear)
 x16 = start address (in 7e0000 bank)
 y16 = size in bytes
@@ -383,20 +459,20 @@ WARNING, do not clear the stack or this will never return.
   lda #$00
   ldx #$2000 ;start at 2000
   ldy #$e000 ;clear e000 bytes
-  jsl wram_fill_7e
+  jsl WRAM_Fill_7E
   
 or...  
   CLEAR_7E  value, addr, length  
   
   
-wram_fill_7f: 
-same as wram_fill_7e, except address will be in 7f0000 bank.
+WRAM_Fill_7F: 
+same as WRAM_Fill_7E, except address will be in 7f0000 bank.
   
 or...  
   CLEAR_7F  value, addr, length
 
   
-vram_fill:
+VRAM_Fill:
 to fill an area of vram with an 8 bit value.
 first set a vram address and increment mode.
 ;a = fill value -L 8 bit
@@ -404,20 +480,20 @@ first set a vram address and increment mode.
 (A in 8 bit, XY in 16 bit, forced blank)
   A8
   lda #V_INC_1 ;make sure the increment mode is 1
-  sta vram_inc
+  sta VMAIN ;$2115
   
   XY16
   ldx bg1_map_base ;vram address
-  stx vram_addr
+  stx VMADDL ;$2116
 
-  lda #0 ;fill value
+  lda #0 ;fill value, 8 bit
   ldx #$1000 ;# of bytes
-  jsl vram_fill
+  jsl VRAM_Fill
   
-(no macro)
+ 
   
   
-vram_fill2:
+VRAM_Fill2:
 to fill an area of vram with a 16 bit value. (slower) 
 first set a vram address and increment mode.
 ;a = fill value -L 8 bit
@@ -425,21 +501,23 @@ first set a vram address and increment mode.
 (AXY in 16 bit, forced blank)
   A8
   lda #V_INC_1 ;make sure the increment mode is 1
-  sta vram_inc
+  sta VMAIN ;$2115
   
   AXY16
   lda bg1_map_base ;vram address
-  sta vram_addr
+  sta VMADDL ;$2116
 
-  lda #$1234 ;fill value
+  lda #$1234 ;fill value 16 bit
   ldx #$0800 ;# of WORDS (x2 for bytes)
-  jsl vram_fill2
+  jsl VRAM_Fill2
   
-(no macro)
+ 
   
   
+* All the palette functions copy to a buffer that
+is DMA-ed to the CGRAM at the next NMI  
   
-pal_all:
+Pal_All:
 to copy 512 bytes to a buffer, to set the full palette
 ;load A HL with pointer to data
 ;load X -L with bank of data
@@ -447,13 +525,13 @@ to copy 512 bytes to a buffer, to set the full palette
   AXY16
   lda #.loword(Palette_Data) ;source address
   ldx #^Palette_Data
-  jsl pal_all
+  jsl Pal_All
   
 or...
   COPY_PAL_ALL  src_address
   
   
-pal_bg:
+Pal_BG:
 to copy 256 bytes to a buffer, to set the bg palette
 ;load A HL with pointer to data
 ;load X -L with bank of data
@@ -461,14 +539,13 @@ to copy 256 bytes to a buffer, to set the bg palette
   AXY16
   lda #.loword(Palette_BG) ;source address
   ldx #^Palette_BG
-  jsl pal_bg  
+  jsl Pal_BG  
   
 or...  
   COPY_PAL_BG  src_address
   
   
-  
-pal_spr:
+Pal_Spr:
 to copy 256 bytes to a buffer, to set the spr palette
 ;load A HL with pointer to data
 ;load X -L with bank of data
@@ -476,13 +553,13 @@ to copy 256 bytes to a buffer, to set the spr palette
   AXY16
   lda #.loword(Palette_SPR) ;source address
   ldx #^Palette_SPR
-  jsl pal_spr   
+  jsl Pal_Spr   
   
 or...  
   COPY_PAL_SP  src_address
   
   
-pal_row:
+Pal_Row:
 to copy 32 bytes to a buffer, to set 1 row of the
 palette (16 colors).
 ;load A HL with pointer to data
@@ -493,16 +570,15 @@ palette (16 colors).
   lda #.loword(Palette16) ;source address
   ldx #^Palette16
   ldy #2 ;3rd row
-  jsl pal_row
+  jsl Pal_Row
   
 or...  
   COPY_PAL_ROW  src_address, row
   
   
   
-pal_col:
-to set 1 color (2 bytes) anywhere in the palette,
-copies to a buffer, which is copied at nmi.
+Pal_Col:
+to set 1 color (2 bytes) anywhere in the palette
 ;load A HL with color 0-$7fff
 ;load X -L with index or the color 0-255
 (AXY in 16 bit, any time)
@@ -510,24 +586,24 @@ copies to a buffer, which is copied at nmi.
   AXY16
   lda #$7fff ;color (white)
   ldx #$0011 ;0-255
-  jsl pal_col
+  jsl Pal_Col
   
 or...  
   SET_ONE_COLOR  value, index
   
   
-pal_bright:
+Pal_Bright:
 set the screen brightness. 0 dark to 15 full bright
 (A in 8 bit, any time)
   A8
   lda #15
-  jsl pal_bright
+  jsl Pal_Bright
   
 or...  
   SET_BRIGHT  value
   
   
-set_mosaic:
+Set_Mosaic:
 changes the mosaic settings. A8 = 0-15
 0 = 1x1, F = 16x16
 (it is set to affect all BG layers)
@@ -535,45 +611,44 @@ changes the mosaic settings. A8 = 0-15
 (any time)
   A8
   lda #0 ;off
-  jsl set_mosaic
+  jsl Set_Mosaic
    
 or...  
   SET_MOSAIC  value
   
   
-pal_fade:
+Pal_Fade:
 to fade the brightness to a certain value, 0-15.
 ;a8 = fade to value 0-15  
   A8
   lda #0 ;fade to black
-  jsl pal_fade
+  jsl Pal_Fade
   
 or...  
   BRIGHT_FADE_TO  final 
   
   
-mosaic_fade:
+Mosaic_Fade:
 to fade the mosaic to a certain value, 0-15.
 0 = 1x1, F = 16x16
 ;a8 = fade to value 0-15  
   A8
   lda #15 ;fade to big blocks
-  jsl mosaic_fade
+  jsl Mosaic_Fade
   
 or...  
   MOSAIC_FADE_TO  final
   
   
-ppu_wait_nmi:
+PPU_Wait_NMI:
 only works if NMI interrupts are ON.
 this will wait 1 frame. It waits till an nmi
-is triggered and completed.
-  jsl ppu_wait_nmi
+is triggered and completed. Put this at the top
+of the infinite loop.
+  jsl PPU_Wait_NMI
   
-(no macro)
-
   
-delay:
+Delay:
 a8 is the # of frames to wait. 0 is 256 frames.
 Max is about 4 seconds. If you need more, call
 this multiple times.
@@ -581,107 +656,85 @@ It consumes 100% of the CPU time.
 only works if NMI interrupts are ON.
   A8
   lda #10 ;10 frames
-  jsl delay
+  jsl Delay
   
 or...  
   DELAY_FOR  frames
   
 
-ppu_off:
+PPU_Off:
 turns off the screen.
 only works if NMI interrupts are ON.
-  jsl ppu_off
-  
-(no macro)
+  jsl PPU_Off
   
 
-ppu_on:
+PPU_On:
+turns on the screen.
 only works if NMI interrupts are ON.
-turns on the screen, assuming you put SOMETHING
-on the main screen, and brightness isn't zero.
-vram reads/writes won't work while the screen on.
-  jsl ppu_on
+  jsl PPU_On
   
-(no macro)
+ 
   
 
  
   
   
-multiply:
+Multiply:
 to multiply 2 8 bit numbers and get a 16 bit result.
 (a16, xy8, any time)
-;in x and y have 8 bit multipliers
-;out a16 = result
+in x and y have 8 bit multipliers, but the registers
+can be 16 bit mode (as long as values are 0-255)
+out a16 = result
   A16
-  XY8
   ldx #2
   ldy #3
-  jsl multiply
-  ;returns A = 6
+  jsl Multiply
+  ;returns A16 = 6
   
-(no macro)
+ 
+Multiply_Fast:
+removed.
   
-  
-multiply_fast:
-to multiply an 8 bit number by a 16 bit number
-and get a 24 bit result. This is much faster than
-the other multiply, but only works in BG mode 0-6.
-The numbers get weird if either of the negative
-bits are set for the multipliers. It is a
-"2s compliment multiplication", so FF = -1, FE = -2
-;in A = 16 bit multiplier
-;in X = 8 bit multiplier
-;out A = 16 bit result
-;out X = 8 upper most bits if result is > FFFF
-  A16
-  XY8
-  lda #$100
-  ldx #$10
-  jsl multiply_fast
-;result A = $1000 (X = 0)
-  
-(no macro)
-  
-
-divide:
+ 
+Divide:
 to divide a 16 bit number by an 8 bit number and
 get a 16 bit result (and 8 bit remainder)
-this is very slow. Use sparingly.
-;in a16 = dividend
-;in x8 = divisor
-;out a16 = quotient
-;out x8 = remainder
+! this is very slow. Use sparingly.
+
+in a16 = dividend
+in x8 = divisor - it can be in 16 bit mode
+  (as long as it's value is 0-255)
+out a16 = quotient
+out x8 = remainder
   A16
-  XY8
   lda #$1002
   ldx #$10
-  jsl divide
+  jsl Divide
 ;result A = $100 (X = 2, remainder)
   
-(no macro)
+ 
   
 
-set_main_screen:
+Set_Main_Screen:
 to set which layers are active on the main screen.
 this is how you make the screen visible.
-see examples in defines.asm, such as ALL_ON_SCREEN
+see examples in regs.asm, such as ALL_ON_SCREEN
 (A in 8 bit, any time)
   A8
   lda #(BG1_ON|SPR_ON)
-  jsl set_main_screen
+  jsl Set_Main_Screen
   
 or...  
   SET_MAIN_SCR  (BG1_ON|SPR_ON)
   
   
-set_sub_screen:
+Set_Sub_Screen:
 to set which layers are active on the sub screen.
 this is for color math.
 (A in 8 bit, any time)
   A8
   lda #(BG1_ON|SPR_ON)
-  jsl set_main_screen  
+  jsl Set_Sub_Screen  
   
 or...  
   SET_SUB_SCR  (BG1_ON|SPR_ON)
@@ -697,60 +750,57 @@ music.asm
 
 Shiru wrote the SNES GSS tracker and SPC driver code.
 The asm code has been modified to work with ca65.
-Apparently, there is a bug in the original spc code,
-which has been patched, in snesgssP.exe, but I
-removed the streaming BRR code to put the patch in.
-(see spc_patch.txt for technical details.)
+Apparently, there is a bug in the original SPC code,
+which has been patched, and also echo functions were
+added (but streaming audio was removed)
 
-Use the tracker, and export the spc700.bin (holds
-the spc driver and the brr samples) and each song...
+Use the snesgssQ tracker, and export the SPC700.bin (holds
+the SPC driver and the brr samples) and each song...
 music_1.bin. Include them in the game code with
 .incbin "file"
 
 
-spc_init:
-to load the spc driver into the spc. Pass it a
-pointer to the spc700.bin file.
+SPC_Init:
+to load the SPC driver into the SPC. Pass it a
+pointer to the SPC700.bin file.
   AXY16
   lda #.loword(music_code)
   ldx #^music_code
-  jsl spc_init
-;note, this calls the load_data function
-;and also calls the initialize command 
-;and it finds the address where the song should load.
+  jsl SPC_Init
+;NOTE, this could take a long time.
 
 
-spc_load_data:
-to load data to the spc. You shouldn't need to
+SPC_Load_Data:
+to load data to the SPC. You shouldn't need to
 call this directly. It uses stack relative
 addressing, so you would need to push
 several values to the stack before hand.
 
 
-spc_play_song:
-to load a song (after spc_init) to the spc,
+SPC_Play_Song:
+to load a song (after SPC_init) to the SPC,
 and start it playing. It first calls the
 stop command, so you shouldn't need to do that.
   AXY16
   lda #.loword(song_address)
   ldx #^song_address
-  jsl spc_play_song
+  jsl SPC_Play_Song
 
 
-spc_command_asm:
-to send a command to the spc. Don't call this
+SPC_Command_ASM:
+to send a command to the SPC. Don't call this
 directly. It uses stack relative to pass values.
 
 
-spc_stereo:
+SPC_Stereo:
 to set either mono or stereo. A16 = 0 or 1.
 the init code sets it to mono by default.
   A16
   lda #0 (mono) or 1 (stereo)
-  jsl spc_stereo
+  jsl SPC_Stereo
   
 
-spc_global_volume:
+SPC_Global_Volume:
 to set global volume and speed. I'm not entirely
 sure if the speed value is different from the
 value used by the SNESGSS tracker, which is 0-99
@@ -758,41 +808,41 @@ value used by the SNESGSS tracker, which is 0-99
   AXY16
   lda #speed
   ldx #volume
-  jsl spc_global_volume
+  jsl SPC_Global_Volume
   
  
-spc_channel_volume:
+SPC_Channel_Volume:
 to change the max volume for a specific channel 0-7
   AXY16
   lda #channels 0-7
   ldx #volume   0-127
-  jsl spc_channel_volume
+  jsl SPC_Channel_Volume
   
  
-music_stop:
+Music_Stop:
 to stop the music, but not sound effects.
-  jsl music_stop
+  jsl Music_Stop
   
 
-music_pause:
+Music_Pause:
 to pause and unpause, a16 is 0 or 1
   A16
   lda #0 (unpause) or 1 (pause)
-  jsl music_pause
+  jsl Music_Pause
 
   
-sound_stop_all:
+Sound_Stop_All:
 to stop music and sound effects.
-  jsl sound_stop_all
+  jsl Sound_Stop_All
   
 
-sfx_play:
+SFX_Play:
 you shouldn't have to call this directly.
 uses stack relative to push all values.
-use the following.
+use the following...
 
 
-sfx_play_center:
+SFX_Play_Center:
 to play a sound effect pan center. AXY is 8 bit.
 ;in a= sfx #
 ;	x= volume 0-127
@@ -801,24 +851,60 @@ to play a sound effect pan center. AXY is 8 bit.
   lda #0 ;the first sfx
   ldx #127 ;volume
   ldy #7 ;the top channel
-  jsl sfx_play_center
+  jsl SFX_Play_Center
 
 
-sfx_play_left:
+SFX_Play_Left:
 same, but pan left.
 
 
-sfx_play_right:
+SFX_Play_Right:
 same, but pan right.
 
 
-spc streaming was removed.
+SPC streaming was removed.
 
 
+Echo_Vol:
+-for snesgssQ fork
+sets the echo volume. turn echo channels on/off.
+  AXY8
+  lda #echo volume 0-$7f (0 = off)
+  ldx #which channels on? (bit field, each bit = a channel)
+  jsl Echo_Vol
 
   
+Echo_Addr:
+-for snesgssQ fork
+changes the echo buffer location and size
+! echo volume must be zero when changing this !
+! echo address needs to be > the last spc file byte
+  AXY8
+  lda #echo start address highbyte
+  ldx #echo delay (0-$f), should be 0-5
+  jsl Echo_Addr
   
+  
+Echo_Fb_Fir:
+-for snesgssQ fork  
+change the Echo Feedback and FIR filter settings
+
+;  0 = simple echo
+;  1 = multi tap echo
+;  2 = low pass echo
+;  3 = high pass echo
+  AXY8
+  lda #FIR filter settings (0-3)
+  ldx #echo feedback volume (0-$7f)
+  jsl Echo_Fb_Fir	
+  
+  
+  
+  
+  
+-----------
 more macros
+-----------
 
 WDM_BREAK
 for debugging, MESEN-S breaks on WDM commands in
@@ -833,19 +919,19 @@ BLOCK_MOVE  length, src_addr, dst_addr
 to move from WRAM to WRAM (you can't dma this way)
 you would use MVN. this macro simplifies it.
 Use long addresses or labels.
-  BLOCK_MOVE  100, $7e0000, $7f1234
+  BLOCK_MOVE  100, $7e0000, $7f1234 
 
 
 SET_VRAM_INC  value
 to set the vram increment mode.
-see examples in defines.asm
+see examples in regs.asm
   SET_VRAM_INC  V_INC_1
   
   
 SET_INTERRUPT
 to turn on / off hardware interrupts (nmi, irq,
 and controllers). Note IRQ also requires a cli command.
-see examples in defines.asm
+see examples in regs.asm
   SET_INTERRUPT  NO_INTERRUPTS
   SET_INTERRUPT (NMI_ON|AUTO_JOY_ON)
 

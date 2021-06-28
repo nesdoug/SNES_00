@@ -1,11 +1,16 @@
-;init code for easySNES
+;init code for SNES
 ;much borrowed from Damian Yerrick
+;some borrowed from Oziphantom
 
 .p816
 .smart
 
+
+
 	
-.segment "CODE"
+.segment "CODE"	
+	
+
 RESET:
 	sei			; turn off IRQs
 	clc
@@ -86,65 +91,46 @@ RESET:
 	
 	
 	
-	
-
-	
 	AXY16
 	lda #$0000
 	tcd				; return direct page to real zero page
 
-wram_clear: 		;data bank is 7e
-	tax 			; a and x are zero
-@loop:
-	sta f:$7e0000,x
-	sta f:$7f0000,x
-	inx
-	inx
-	bne @loop
+
+;the next 17 lines adapted from code by Oziphantom
+
+Clear_WRAM2:
+	A16
+	XY8
+	stz $2181 ;WRAM_ADDR_L
+	stz $2182 ;WRAM_ADDR_M
 	
-	;axy is 16
-	stz $2116 ;vram address 0000
-	;increment mode (2115) set to $80 above +1
-	;a is zero
-	tay ;0 number of BYTES to write = 100000
-	jsl vram_fill
+	lda #$8008 ;fixed transfer to WRAM data 2180
+	sta $4300 ; and 4301
+	lda	#.loword(DMAZero)
+	sta $4302 ; and 4303
+	ldx #^DMAZero ;bank #
+	stx $4304
+	stz $4305 ;and 4306 = size 0000 = $10000
+	ldx #1
+	stx $420B ; DMA_ENABLE, clear the 1st half of WRAM
+	stx $420B ; DMA_ENABLE, clear the 2nd half of WRAM
 	
-	jsl oam_clear
-	
-	jsl reset_vram_system 
-	
-;all variables have been zeroed. Set some to a standard value
 	A8
-	lda #$80
-	sta r2100 ;forced blank
-	lda #$0f
-	sta r2106 ;mosaic, affects all, 1x1
+	XY16
+	jsr Clear_Palette
+	;it will dma at NMI
+	jsl OAM_Clear ; !! jsl
+	;it will dma at NMI
+	jsr Clear_VRAM
+	jsl Reset_VRAM_System ; !! jsl
+	; just in case
 	
-	
-;make sure nmi is disabled when loading code or song to spc
-	AXY16
-	lda #.loword(music_code)
-	ldx #^music_code
-	jsl spc_init
-	
-;	AXY16
-	lda #$0001
-	jsl spc_stereo
-
-
+;	A8
 	lda #1
 	sta $420d ;fastROM
-	
-;moved to main.asm	
-;	lda #$81 ;enable NMI and auto controller reads, IRQs off
-;	sta r4200
-;	sta $4200
-	
-	;cli ;if we want H or V counter IRQs, uncomment this
-		 ;and enable them at $4200
 
 	AXY16
-	jml main ;should jump into the $80 bank, fast ROM
+	jml Main ;should jump into the $80 bank, fast ROM
 	
 ;we are still in forced blank, main code will have to turn the screen on
 
@@ -152,10 +138,55 @@ wram_clear: 		;data bank is 7e
 
 
 
+;some code below adapted from code by Oziphantom
+
+Clear_Palette:
+;fills the buffer with zeros
+	php
+	A8
+	XY16
+	ldx #.loword(PAL_BUFFER) 
+	stx $2181 ;WRAM_ADDR_L
+	stz $2183 ;WRAM_ADDR_H
+
+	ldx #$8008 ;fixed transfer to WRAM data 2180
+	stx $4300 ; and 4301
+	ldx	#.loword(DMAZero)
+	stx $4302 ; and 4303
+	lda #^DMAZero ;bank #
+	sta $4304
+	ldx #$200 ;512 bytes
+	stx $4305 ; and 4306
+	lda #1
+	sta $420B ; DMA_ENABLE start dma, channel 0
+	inc pal_update
+	plp
+	rts
+	
+
+Clear_VRAM:
+	php
+	A16
+	XY8
+	ldx #$80
+	stx $2115 ;VRAM increment mode +1, after the 2119 write
+	stz $2116 ;VRAM Address 
+	stz $4305 ; size $10000 bytes ($8000 words)
+	lda #$1809 ;fixed transfer (2 reg, write once) to VRAM_DATA $2118-19
+	sta $4300 ; and 4301
+	lda	#.loword(DMAZero)
+	sta $4302 ; and 4303
+	ldx #^DMAZero ;bank #
+	stx $4304
+	ldx #1
+	stx $420B ; DMA_ENABLE start dma, channel 0
+	plp
+	rts
 
 
 
-
+DMAZero:
+.word $0000
 
 
 
