@@ -1789,35 +1789,7 @@ Set_Sub_Screen:
 
 	
 
-;----------------
-; Unrle
-;----------------
-; updated 6/2021
-; used with R8C.py RLE or any output 
-; RLE file from M1TE or SPEZ
-; this assumes screen is OFF
-; and a VRAM address has been set
-; a16 = address of the compressed data
-; x16 = bank of the compressed data
-; will automatically decompress to
-; 7f0000 and then copy to the VRAM
 
-; one byte header ----
-; MM CCCCCC
-; M - mode, C - count (+1)
-; 0 - literal, C+1 values (1-64)
-; 1 - rle run, C+1 times (1-64)
-; 2 - rle run, add 1 each pass, C+1 times (1-64)
-; 3 - extend the value count to 2 bytes
-; 00 lit, 40 rle, 80 plus, F0 special
-
-; two byte header ----
-; 11 MM CCCC (high) CCCCCCCC (low)
-; M - mode (as above), C - count (+1)
-; count 1-4096
-; c0 lit big, d0 = rle big, e0 = plus big
-; F0 - end of data, non-planar
-; FF - end of data, planar
 
 ;----------------
 ; UNRLE
