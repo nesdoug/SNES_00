@@ -117,12 +117,13 @@ Clear_WRAM2:
 	
 	A8
 	XY16
-	jsr Clear_Palette
+;all jsl, all rtl
+	jsl Clear_Palette
 	;it will dma at NMI
-	jsl OAM_Clear ; !! jsl
+	jsl OAM_Clear
 	;it will dma at NMI
-	jsr Clear_VRAM
-	jsl Reset_VRAM_System ; !! jsl
+	jsl Clear_VRAM
+	jsl Reset_VRAM_System
 	; just in case
 	
 ;	A8
@@ -161,7 +162,7 @@ Clear_Palette:
 	sta $420B ; DMA_ENABLE start dma, channel 0
 	inc pal_update
 	plp
-	rts
+	rtl ;changed for consistency
 	
 
 Clear_VRAM:
@@ -181,8 +182,8 @@ Clear_VRAM:
 	ldx #1
 	stx $420B ; DMA_ENABLE start dma, channel 0
 	plp
-	rts
-
+	rtl ;changed for consistency
+ 
 
 
 DMAZero:
